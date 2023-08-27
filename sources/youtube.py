@@ -33,7 +33,7 @@ def add_channel(channel):
         avatar_data = download_image(about['thumbnails'][0]['url'])
 
         Channel.create_or_update(
-            id=about['id'],
+            id=about['channel_id'],
             name=about['channel'],
             avatar=avatar_data,
             description=about['description']
