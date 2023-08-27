@@ -1,3 +1,4 @@
+from __future__ import annotations
 import peewee
 import datetime
 
@@ -34,7 +35,7 @@ class Channel(BaseModel):
     notes = peewee.TextField(null=True)
 
     @classmethod
-    def create_or_update(self, id, name, avatar, description):
+    def create_or_update(self, id, name, avatar, description) -> Channel:
         channel = self.select().where(self.id == id).first()
 
         if not channel:
@@ -45,13 +46,13 @@ class Channel(BaseModel):
                 description=description,
             )
 
-            return
+            return channel
 
         # check if anything's changed
         if name == channel.name or\
                 avatar == channel.avatar or\
                 description == channel.description:
-            return
+            return channel
 
         # store current state
         ChannelVersion.create(
@@ -69,6 +70,8 @@ class Channel(BaseModel):
         # todo:
         # channel.timestamp = SERVER TIME
         channel.save()
+
+        return channel
 
 
 class ChannelVersion(BaseModel):
