@@ -54,6 +54,7 @@ class Channel(Base):
                 avatar=avatar,
                 description=description,
             )
+            session.add(channel)
 
             return channel
 
@@ -64,12 +65,14 @@ class Channel(Base):
             return channel
 
         # store current state
-        ChannelVersion(
+        session.add(
+            ChannelVersion(
             channel=channel,
             name=channel.name,
             avatar=channel.avatar,
             description=channel.description,
             timestamp=channel.timestamp
+            )
         )
 
         # update new data
@@ -78,7 +81,8 @@ class Channel(Base):
         channel.description = description
         # todo:
         # channel.timestamp = SERVER TIME
-        session.add(channel)
+        
+        session.commit()  # write changes to the database
         
         return channel
 
@@ -86,7 +90,7 @@ class Channel(Base):
 class ChannelVersion(Base):
     __tablename__ = 'channel_version'
     
-    channel_id = Column(Text, ForeignKey('channel.id'))
+    channel_id = Column(Text, ForeignKey('channel.id'), primary_key=True)
 
     name = Column(Text)
     avatar = Column(BLOB)
@@ -115,7 +119,7 @@ class Video(Base):
 class VideoDetails(Base):
     __tablename__ = 'video_details'   
     
-    video_id = Column(Text, ForeignKey('video.id'))
+    video_id = Column(Text, ForeignKey('video.id'), primary_key=True)
 
 ###
 # Comment
@@ -125,7 +129,7 @@ class VideoDetails(Base):
 class VideoComment(Base):
     __tablename__ = 'video_comment'
     
-    channel_id = Column(Text, ForeignKey('channel.id'))
+    channel_id = Column(Text, ForeignKey('channel.id'), primary_key=True)
     video_id = Column(Text, ForeignKey('video.id'))
 
 
