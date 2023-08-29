@@ -1,45 +1,54 @@
 from __future__ import annotations
-import peewee
+from sqlalchemy import *
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Session
+
 import datetime
 
-db = peewee.SqliteDatabase('archive.db')
-
-
-class BaseModel(peewee.Model):
-    class Meta:
-        database = db
+#TODO: handle this shit in main
+db = create_engine('archive.db', echo=True)
+session = Session(engine)
+Base = declarative_base()
 
 ###
 # Channel
 ###
 
+class Person(Base):
+    __tablename__ = 'person'
+    
+    id = Column(String, primary_key=True)
+    name = Column(Text)
+    country = Column(String)
+    channels = relationship('channel', backref='person')
 
-class Person(BaseModel):
-    id = peewee.CharField(primary_key=True)
-    name = peewee.TextField()
-    country = peewee.CharField()
+class Channel(Base):
+    __tablename__ = 'channel'
+    
+    id = Column(String, primary_key=True)
+    person = Column(Text, ForeignKey('person.name'), nullable=False)
 
+    name = Column(Text)
+    avatar = Column(BLOB)
+    description = Column(Text)
 
-class Channel(BaseModel):
-    id = peewee.CharField(primary_key=True)
-    person = peewee.ForeignKeyField(Person, backref='person', null=True)
-
-    name = peewee.TextField()
-    avatar = peewee.BlobField()
-    description = peewee.TextField()
-
-    timestamp = peewee.DateTimeField(
-        constraints=[peewee.SQL('DEFAULT CURRENT_TIMESTAMP')])
+    timestamp = Column(DateTime,
+        default=datetime.datetime.utcnow())
 
     # optional data
-    notes = peewee.TextField(null=True)
+    notes = Column(Text, nullable=True)
+
+    versions = relationship('channel_version', backref='channel')
+    comments = relationship('video_comment', backref='channel')
+    videos = relationship('video', backref='channel')
 
     @classmethod
     def create_or_update(self, id, name, avatar, description) -> Channel:
-        channel = self.select().where(self.id == id).first()
-
+        channel = session.query(Channel).filter(self.id == id).first()
+        
         if not channel:
-            channel = self.create(
+            channel = Channel(
                 id=id,
                 name=name,
                 avatar=avatar,
@@ -55,7 +64,7 @@ class Channel(BaseModel):
             return channel
 
         # store current state
-        ChannelVersion.create(
+        ChannelVersion(
             channel=channel,
             name=channel.name,
             avatar=channel.avatar,
@@ -69,55 +78,59 @@ class Channel(BaseModel):
         channel.description = description
         # todo:
         # channel.timestamp = SERVER TIME
-        channel.save()
-
+        session.add(channel)
+        
         return channel
 
 
-class ChannelVersion(BaseModel):
-    channel = peewee.ForeignKeyField(Channel, backref='versions')
+class ChannelVersion(Base):
+    __tablename__ = 'channel_version'
+    
+    channel_id = Column(Text, ForeignKey('channel.id'))
 
-    name = peewee.TextField()
-    avatar = peewee.BlobField()
-    description = peewee.TextField()
+    name = Column(Text)
+    avatar = Column(BLOB)
+    description = Column(Text)
 
-    timestamp = peewee.DateTimeField()
+    timestamp = Column(DateTime)
 
 ###
 # Video
 ###
 
 
-class Video(BaseModel):
-    id = peewee.CharField(primary_key=True)
-    title = peewee.TextField()
-    description = peewee.TextField(null=True)
-    duration = peewee.FloatField()
-    author = peewee.ForeignKeyField(Channel, backref='videos')
+class Video(Base):
+    __tablename__ = 'video'
+    
+    id = Column(String, primary_key=True)
+    title = Column(Text)
+    description = Column(Text, nullable=True)
+    duration = Column(Float)
+    author_id = Column(Text, ForeignKey('channel.id'))
+    
+    details = relationship('video_details', backref='video')
+    comments = relationship('video_comment', backref='video')
 
 
-class VideoDetails(BaseModel):
-    video = peewee.ForeignKeyField(Video, backref='details', unique=True)
+class VideoDetails(Base):
+    __tablename__ = 'video_details'   
+    
+    video_id = Column(Text, ForeignKey('video.id'))
 
 ###
 # Comment
 ###
 
 
-class VideoComment(BaseModel):
-    author = peewee.ForeignKeyField(Channel, backref='comments')
-    video = peewee.ForeignKeyField(Video, backref='comments')
+class VideoComment(Base):
+    __tablename__ = 'video_comment'
+    
+    channel_id = Column(Text, ForeignKey('channel.id'))
+    video_id = Column(Text, ForeignKey('video.id'))
 
 
 def connect():
-    db.connect()
-    db.create_tables([Person,
-                      Channel,
-                      ChannelVersion,
-                      Video,
-                      VideoDetails,
-                      VideoComment])
-
+    MetaData.create_all(db)
 
 def close():
-    db.close()
+    db.dispose()
