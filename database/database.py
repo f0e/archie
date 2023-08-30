@@ -2,13 +2,15 @@ from __future__ import annotations
 from sqlalchemy import *
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import relationship
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
 
 import datetime
 
 #TODO: handle this shit in main
-db = create_engine('sqlite:///archive.db', echo=True)
-session = Session(engine)
+db = create_engine('sqlite:///archive.db')
+Session = sessionmaker(bind=db)
+session = Session()
+
 ###
 # Channel
 ###
@@ -22,13 +24,13 @@ class Person(Base):
     id = Column(String, primary_key=True)
     name = Column(Text)
     country = Column(String)
-    channels = relationship('channel', backref='person')
+    channels = relationship('Channel', backref='person')
 
 class Channel(Base):
     __tablename__ = 'channel'
     
     id = Column(String, primary_key=True)
-    person = Column(Text, ForeignKey('person.name'), nullable=False)
+    person_name = Column(Text, ForeignKey('person.name'), nullable=True)
 
     name = Column(Text)
     avatar = Column(BLOB)
@@ -40,9 +42,9 @@ class Channel(Base):
     # optional data
     notes = Column(Text, nullable=True)
 
-    versions = relationship('channel_version', backref='channel')
-    comments = relationship('video_comment', backref='channel')
-    videos = relationship('video', backref='channel')
+    versions = relationship('ChannelVersion', backref='channel')
+    comments = relationship('VideoComment', backref='channel')
+    videos = relationship('Video', backref='channel')
 
     @classmethod
     def create_or_update(self, id, name, avatar, description) -> Channel:
@@ -56,25 +58,17 @@ class Channel(Base):
                 description=description,
             )
             session.add(channel)
+            session.commit()
 
             return channel
+
+        print('found existing channel!')
 
         # check if anything's changed
-        if name == channel.name or\
-                avatar == channel.avatar or\
+        if name == channel.name and\
+                avatar == channel.avatar and\
                 description == channel.description:
             return channel
-
-        # store current state
-        session.add(
-            ChannelVersion(
-            channel=channel,
-            name=channel.name,
-            avatar=channel.avatar,
-            description=channel.description,
-            timestamp=channel.timestamp
-            )
-        )
 
         # update new data
         channel.name = name
@@ -83,7 +77,7 @@ class Channel(Base):
         # todo:
         # channel.timestamp = SERVER TIME
         
-        session.commit()  # write changes to the database
+        session.commit()
         
         return channel
 
@@ -113,8 +107,8 @@ class Video(Base):
     duration = Column(Float)
     author_id = Column(Text, ForeignKey('channel.id'))
     
-    details = relationship('video_details', backref='video')
-    comments = relationship('video_comment', backref='video')
+    details = relationship('VideoDetails', backref='video')
+    comments = relationship('VideoComment', backref='video')
 
 
 class VideoDetails(Base):
