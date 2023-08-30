@@ -3,7 +3,7 @@ import time
 import yt_dlp
 
 from utils.utils import download_image
-from database.database import db, Channel
+from database.database import db, Channel, Video
 from . import filter
 
 
@@ -38,12 +38,12 @@ def parse_channel(channelLink):
             description=about['description']
         )
 
-        parse_video_details(channel)
+        parse_videos(channel)
 
     return True
 
 
-def parse_video_details(channel):
+def parse_videos(channel):
     # updates a channel's videos, playlists, etc.
 
     ydl_opts = {
@@ -63,6 +63,21 @@ def parse_video_details(channel):
         # channel.update_videos(videos)
 
         # for video in videos parse_video_details
+
+        for entry in videos['entries']:
+            thumbnail_data = download_image(entry['thumbnails'][0]['url'])
+
+            video = Video.add(Video(
+                id=entry['id'],
+                title=entry['title'],
+                thumbnail=thumbnail_data,
+                description=entry['description'],
+                duration=entry['duration'],
+                author_id=channel.id,
+                availability=entry['availability'])
+            )
+
+            parse_video_details(video)
 
     return True
 
