@@ -1,19 +1,20 @@
 from __future__ import annotations
 from sqlalchemy import *
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import Session
 
 import datetime
 
 #TODO: handle this shit in main
-db = create_engine('archive.db', echo=True)
+db = create_engine('sqlite:///archive.db', echo=True)
 session = Session(engine)
-Base = declarative_base()
-
 ###
 # Channel
 ###
+
+class Base(DeclarativeBase):
+    pass
 
 class Person(Base):
     __tablename__ = 'person'
@@ -134,7 +135,7 @@ class VideoComment(Base):
 
 
 def connect():
-    MetaData.create_all(db)
+    Base.metadata.create_all(db)
 
 def close():
     db.dispose()
