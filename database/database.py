@@ -113,12 +113,21 @@ class Video(Base):
 
     id = Column(String, primary_key=True)
     title = Column(Text)
+    thumbnail = Column(BLOB)
     description = Column(Text, nullable=True)
     duration = Column(Float)
     author_id = Column(Text, ForeignKey('channel.id'))
+    availability = Column(String)
 
     details = relationship('VideoDetails', backref='video', uselist=False)
     comments = relationship('VideoComment', backref='video')
+
+    @classmethod
+    def add(self, video) -> Video:
+        session.add(video)
+        session.commit()
+
+        return video
 
 
 class VideoDetails(Base):
