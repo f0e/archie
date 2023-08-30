@@ -4,6 +4,7 @@ FILTER_VERIFIED = False
 
 BLOCK_NO_VIDEOS = False
 MAX_VIDEOS = 300
+FILTER_LIVESTREAMS = True
 
 
 def filter_about(about):
@@ -22,4 +23,10 @@ def filter_videos(videos):
     if (num_videos == 0 and BLOCK_NO_VIDEOS) or num_videos > MAX_VIDEOS:
         return True
 
+    # todo: filter livestreams. is it possible here or does it have to be done after getting full video info
+
+    return False
+
+
+def filter_video(video):
     return False
