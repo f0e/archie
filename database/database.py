@@ -24,15 +24,17 @@ class Person(Base):
     id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
     name = sql.Column(sql.Text)
     country = sql.Column(sql.String)
-    channels = orm.relationship('Channel', backref='person')
+    channels = orm.relationship('Channel', back_populates='person')
 
 
 class Channel(Base):
     __tablename__ = 'channel'
 
     id = sql.Column(sql.String, primary_key=True)
+
     person_id = sql.Column(
         sql.Integer, sql.ForeignKey('person.id'), nullable=True)
+    person = orm.relationship("Person", back_populates="channels")
 
     name = sql.Column(sql.Text)
     avatar = sql.Column(sql.BLOB)
@@ -48,9 +50,9 @@ class Channel(Base):
     # optional data
     notes = sql.Column(sql.Text, nullable=True)
 
-    versions = orm.relationship('ChannelVersion', backref='channel')
-    comments = orm.relationship('VideoComment', backref='channel')
-    videos = orm.relationship('Video', backref='channel')
+    versions = orm.relationship('ChannelVersion', back_populates='channel')
+    comments = orm.relationship('VideoComment', back_populates='channel')
+    videos = orm.relationship('Video', back_populates='channel')
 
     @classmethod
     def create_or_update(self, id: str, name: str, avatar: bytes | None, banner: bytes | None, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
@@ -116,7 +118,9 @@ class ChannelVersion(Base):
     __tablename__ = 'channel_version'
 
     id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
+
     channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
+    channel = orm.relationship("Channel", back_populates="versions")
 
     name = sql.Column(sql.Text)
     avatar = sql.Column(sql.BLOB)
@@ -136,17 +140,22 @@ class Video(Base):
     title = sql.Column(sql.Text)
     description = sql.Column(sql.Text, nullable=True)
     duration = sql.Column(sql.Float)
-    author_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
 
-    details = orm.relationship('VideoDetails', backref='video', uselist=False)
-    comments = orm.relationship('VideoComment', backref='video')
+    channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
+    channel = orm.relationship("Channel", back_populates="videos")
+
+    details = orm.relationship(
+        'VideoDetails', back_populates='video', uselist=False)
+    comments = orm.relationship('VideoComment', back_populates='video')
 
 
 class VideoDetails(Base):
     __tablename__ = 'video_details'
 
     id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
+
     video_id = sql.Column(sql.String, sql.ForeignKey('video.id'))
+    video = orm.relationship("Video", back_populates="details")
 
 ###
 # Comment
@@ -157,8 +166,12 @@ class VideoComment(Base):
     __tablename__ = 'video_comment'
 
     id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
+
     channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
+    channel = orm.relationship("Channel", back_populates="comments")
+
     video_id = sql.Column(sql.String, sql.ForeignKey('video.id'))
+    video = orm.relationship("Video", back_populates="comments")
 
 
 def connect():
