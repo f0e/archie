@@ -1,9 +1,8 @@
 import json
-import time
 import yt_dlp
 
 from utils.utils import download_image
-from database.database import db, Channel
+from database.database import Channel
 from . import filter
 
 
