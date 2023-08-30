@@ -82,7 +82,7 @@ def parse_videos(channel):
                 thumbnail=thumbnail_data,
                 description=entry['description'],
                 duration=entry['duration'],
-                author_id=channel.id,
+                channel_id=channel.id,
                 availability=entry['availability'])
             )
 
