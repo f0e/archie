@@ -117,7 +117,7 @@ class Video(Base):
     duration = Column(Float)
     author_id = Column(Text, ForeignKey('channel.id'))
 
-    details = relationship('VideoDetails', backref='video')
+    details = relationship('VideoDetails', backref='video', uselist=False)
     comments = relationship('VideoComment', backref='video')
 
 
