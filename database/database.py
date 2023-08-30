@@ -51,13 +51,13 @@ class Channel(Base):
         channel = session.query(Channel).filter(self.id == id).first()
         
         if not channel:
-            channel = Channel(
+            session.add(Channel(
                 id=id,
                 name=name,
                 avatar=avatar,
-                description=description,
+                description=description)
             )
-            session.add(channel)
+
             session.commit()
 
             return channel
@@ -70,14 +70,19 @@ class Channel(Base):
                 description == channel.description:
             return channel
 
-        #TODO: channel history table here
+        session.add(ChannelVersion(
+                channel_id=channel.id,
+                name=channel.name,
+                avatar=channel.avatar,
+                description=channel.description,
+                timestamp=channel.timestamp)
+            )
 
         # update new data
         channel.name = name
         channel.avatar = avatar
         channel.description = description
-        # todo:
-        # channel.timestamp = SERVER TIME
+        channel.timestamp = datetime.datetime.utcnow()
         
         session.commit()
         
