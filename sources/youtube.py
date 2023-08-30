@@ -1,9 +1,8 @@
 import json
-import time
 import yt_dlp
 
 from utils.utils import download_image
-from database.database import db, Channel, Video
+from database.database import Channel, Video
 from . import filter
 
 
@@ -28,14 +27,24 @@ def parse_channel(channelLink):
             # todo: what to do when the channel's already been added
             return False
 
-        # todo: do all channels have at least one avatar? this will fail if not
-        avatar_data = download_image(about['thumbnails'][0]['url'])
+        # get avatar and banner
+        avatar_data = None
+        banner_data = None
+        for image in about['thumbnails']:
+            if image['id'] == 'avatar_uncropped':
+                avatar_data = download_image(image['url'])
+            elif image['id'] == 'banner_uncropped':
+                banner_data = download_image(image['url'])
 
         channel = Channel.create_or_update(
             id=about['channel_id'],
             name=about['channel'],
             avatar=avatar_data,
-            description=about['description']
+            banner=banner_data,
+            description=about['description'],
+            subscribers=about['channel_follower_count'],
+            tags_list=about['tags'],
+            verified=about.get('channel_is_verified')
         )
 
         parse_videos(channel)
