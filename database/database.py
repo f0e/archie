@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 import datetime
 
-#TODO: handle this shit in main
+# TODO: handle this shit in main
 db = create_engine('sqlite:///archive.db')
 Session = sessionmaker(bind=db)
 session = Session()
@@ -15,20 +15,23 @@ session = Session()
 # Channel
 ###
 
+
 class Base(DeclarativeBase):
     pass
 
+
 class Person(Base):
     __tablename__ = 'person'
-    
+
     id = Column(String, primary_key=True)
     name = Column(Text)
     country = Column(String)
     channels = relationship('Channel', backref='person')
 
+
 class Channel(Base):
     __tablename__ = 'channel'
-    
+
     id = Column(String, primary_key=True)
     person_name = Column(Text, ForeignKey('person.name'), nullable=True)
 
@@ -37,7 +40,7 @@ class Channel(Base):
     description = Column(Text)
 
     timestamp = Column(DateTime,
-        default=datetime.datetime.utcnow())
+                       default=datetime.datetime.utcnow())
 
     # optional data
     notes = Column(Text, nullable=True)
@@ -49,7 +52,7 @@ class Channel(Base):
     @classmethod
     def create_or_update(self, id, name, avatar, description) -> Channel:
         channel = session.query(Channel).filter(self.id == id).first()
-        
+
         if not channel:
             session.add(Channel(
                 id=id,
@@ -71,27 +74,27 @@ class Channel(Base):
             return channel
 
         session.add(ChannelVersion(
-                channel_id=channel.id,
-                name=channel.name,
-                avatar=channel.avatar,
-                description=channel.description,
-                timestamp=channel.timestamp)
-            )
+            channel_id=channel.id,
+            name=channel.name,
+            avatar=channel.avatar,
+            description=channel.description,
+            timestamp=channel.timestamp)
+        )
 
         # update new data
         channel.name = name
         channel.avatar = avatar
         channel.description = description
         channel.timestamp = datetime.datetime.utcnow()
-        
+
         session.commit()
-        
+
         return channel
 
 
 class ChannelVersion(Base):
     __tablename__ = 'channel_version'
-    
+
     channel_id = Column(Text, ForeignKey('channel.id'), primary_key=True)
 
     name = Column(Text)
@@ -107,20 +110,20 @@ class ChannelVersion(Base):
 
 class Video(Base):
     __tablename__ = 'video'
-    
+
     id = Column(String, primary_key=True)
     title = Column(Text)
     description = Column(Text, nullable=True)
     duration = Column(Float)
     author_id = Column(Text, ForeignKey('channel.id'))
-    
+
     details = relationship('VideoDetails', backref='video')
     comments = relationship('VideoComment', backref='video')
 
 
 class VideoDetails(Base):
-    __tablename__ = 'video_details'   
-    
+    __tablename__ = 'video_details'
+
     video_id = Column(Text, ForeignKey('video.id'), primary_key=True)
 
 ###
@@ -130,13 +133,14 @@ class VideoDetails(Base):
 
 class VideoComment(Base):
     __tablename__ = 'video_comment'
-    
+
     channel_id = Column(Text, ForeignKey('channel.id'), primary_key=True)
     video_id = Column(Text, ForeignKey('video.id'))
 
 
 def connect():
     Base.metadata.create_all(db)
+
 
 def close():
     db.dispose()
