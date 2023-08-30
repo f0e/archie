@@ -61,7 +61,7 @@ class Channel(Base):
         tags = ",".join(tags_list)
 
         if not channel:
-            session.add(Channel(
+            channel = Channel(
                 id=id,
                 name=name,
                 avatar=avatar,
@@ -70,7 +70,8 @@ class Channel(Base):
                 subscribers=subscribers,
                 tags=tags,
                 verified=verified
-            ))
+            )
+            session.add(channel)
 
             session.commit()
 
