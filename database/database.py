@@ -122,8 +122,7 @@ class Video(Base):
     details = relationship('VideoDetails', backref='video', uselist=False)
     comments = relationship('VideoComment', backref='video')
 
-    @classmethod
-    def add(self, video) -> Video:
+    def add(video) -> Video:
         session.add(video)
         session.commit()
 
