@@ -4,7 +4,7 @@ from sources import youtube
 if __name__ == "__main__":
     database.connect()
 
-    if not youtube.add_channel('@MrBeast'):
+    if not youtube.parse_channel('@BigPharmaDataScientist'):
         print("filtered")
 
     database.close()
