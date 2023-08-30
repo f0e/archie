@@ -70,6 +70,8 @@ class Channel(Base):
                 description == channel.description:
             return channel
 
+        #TODO: channel history table here
+
         # update new data
         channel.name = name
         channel.avatar = avatar
