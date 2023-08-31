@@ -8,8 +8,10 @@ FILTER_LIVESTREAMS = True
 
 
 def filter_about(about):
-    if about['channel_follower_count'] > MAX_SUBSCRIBERS or about['channel_follower_count'] < MIN_SUBSCRIBERS:
-        return True
+    subscribers = about['channel_follower_count'] or 0
+    if subscribers:
+        if about['channel_follower_count'] > MAX_SUBSCRIBERS or about['channel_follower_count'] < MIN_SUBSCRIBERS:
+            return True
 
     if about.get('channel_is_verified') and FILTER_VERIFIED:
         return True

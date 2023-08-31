@@ -1,12 +1,19 @@
 from __future__ import annotations
-import sqlalchemy as sql
+import typing
+import sqlalchemy as sa
 from sqlalchemy import orm
-from utils.utils import download_image
+from utils import utils
 
 import datetime
+import enum
+
+
+def log(message):
+    print("[db] " + message)
+
 
 # TODO: handle this shit in main
-db = sql.create_engine('sqlite:///archive.db')
+db = sa.create_engine('sqlite:///archive.db')
 Session = orm.sessionmaker(bind=db)
 session = Session()
 
@@ -16,114 +23,146 @@ session = Session()
 
 
 class Base(orm.DeclarativeBase):
-    pass
+    def __repr__(self) -> str:
+        return self._repr(id=self.id)
+
+    def _repr(self, **fields: typing.Dict[str, typing.Any]) -> str:
+        '''
+        Helper for __repr__
+        '''
+        field_strings = []
+        at_least_one_attached_attribute = False
+        for key, field in fields.items():
+            try:
+                field_strings.append(f'{key}={field!r}')
+            except sa.orm.exc.DetachedInstanceError:
+                field_strings.append(f'{key}=DetachedInstanceError')
+            else:
+                at_least_one_attached_attribute = True
+        if at_least_one_attached_attribute:
+            return f"<{self.__class__.__name__}({','.join(field_strings)})>"
+        return f"<{self.__class__.__name__} {id(self)}>"
+
+
+class ChannelStatus(enum.Enum):
+    QUEUED = 0
+    ACCEPTED = 1
+    REJECTED = 2
 
 
 class Person(Base):
     __tablename__ = 'person'
 
-    id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
-    name = sql.Column(sql.Text)
-    country = sql.Column(sql.String)
-    channels = orm.relationship('Channel', back_populates='person')
+    id: orm.Mapped[int] = orm.mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    country: orm.Mapped[str] = orm.mapped_column(sa.String)
+
+    # relationships
+    channels: orm.Mapped[typing.List["Channel"]] = orm.relationship(back_populates="person", cascade="all, delete-orphan")
 
 
 class Channel(Base):
     __tablename__ = 'channel'
 
-    id = sql.Column(sql.String, primary_key=True)
+    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
 
-    person_id = sql.Column(
-        sql.Integer, sql.ForeignKey('person.id'), nullable=True)
-    person = orm.relationship("Person", back_populates="channels")
+    status: orm.Mapped[ChannelStatus] = orm.mapped_column(sa.Enum(ChannelStatus))
 
-    name = sql.Column(sql.Text)
+    # tracked
+    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
+    banner_url: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
+    description: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    subscribers: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    _tracked = ['name', 'avatar_url', 'banner_url', 'description', 'subscribers']
 
-    avatar_url = sql.Column(sql.String)
-    banner_url = sql.Column(sql.String)
+    # misc
+    tags: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    verified: orm.Mapped[bool] = orm.mapped_column(sa.Boolean)
 
-    description = sql.Column(sql.Text)
-    subscribers = sql.Column(sql.Integer)
-    tags = sql.Column(sql.Text)
-    verified = sql.Column(sql.Boolean)
-
-    timestamp = sql.Column(sql.DateTime,
-                           default=datetime.datetime.utcnow())
+    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime, default=datetime.datetime.utcnow())
 
     # optional data
-    notes = sql.Column(sql.Text, nullable=True)
+    notes: orm.Mapped[str] = orm.mapped_column(sa.Text, nullable=True)
 
-    versions = orm.relationship('ChannelVersion', back_populates='channel')
-    comments = orm.relationship('VideoComment', back_populates='channel')
-    videos = orm.relationship('Video', back_populates='channel')
+    # relationships
+    versions: orm.Mapped[typing.List["ChannelVersion"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    videos: orm.Mapped[typing.List["Video"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+
+    # backref
+    person_id: orm.Mapped[int] = orm.mapped_column(sa.ForeignKey("person.id"), nullable=True)
+    person: orm.Mapped["Person"] = orm.relationship(back_populates="channels")
+
+    # indexes
+    __table_args__ = (
+        sa.Index('idx_status', 'status'),
+    )
+
+    @staticmethod
+    def get_next_of_status(status: ChannelStatus):
+        return session.query(Channel).filter_by(status=status).first()
+
+    @staticmethod
+    def get(id: str):
+        return session.query(Channel).filter_by(id=id).first()
 
     @classmethod
-    def create_or_update(self, id: str, name: str, avatar_url: str, banner_url: str, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
-        channel = session.query(Channel).filter(self.id == id).first()
+    def create_or_update(self, status: ChannelStatus | None, id: str, name: str, avatar_url: str, banner_url: str | None, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
+        existing_channel = session.query(Channel).filter_by(id=id).first()
 
         tags = ",".join(tags_list)
 
-        if not channel:
-            channel = Channel(
-                id=id,
-                name=name,
-                avatar_url=avatar_url,
-                banner_url=banner_url,
-                description=description,
-                subscribers=subscribers,
-                tags=tags,
-                verified=verified
-            )
+        channel = Channel(
+            id=id,
+            name=name,
+            avatar_url=avatar_url,
+            banner_url=banner_url,
+            description=description,
+            subscribers=subscribers,
+            tags=tags,
+            verified=verified
+        )
 
+        if status:
+            channel.status = status
+
+        if existing_channel:
+            changes = False
+
+            for var in self._tracked:
+                if getattr(channel, var) != getattr(existing_channel, var):
+                    changes = True
+                    break
+
+            if changes:
+                log(f"storing history for channel {name} ({id})")
+
+                session.add(ChannelVersion(
+                    channel_id=channel.id,
+                    name=channel.name,
+                    avatar_url=channel.avatar_url,
+                    banner_url=channel.banner_url,
+                    description=channel.description,
+                    subscribers=channel.subscribers
+                ))
+
+            existing_channel = channel
+        else:
             session.add(channel)
-            session.commit()
-
-            return channel
-
-        print('found existing channel!')
-
-        # check if anything's changed
-        if name == channel.name and \
-                avatar_url == channel.avatar_url and \
-                banner_url == channel.banner_url and \
-                description == channel.description and \
-                subscribers == channel.subscribers and \
-                tags == channel.tags and \
-                verified == channel.verified:
-            return channel
-
-        session.add(ChannelVersion(
-            channel_id=channel.id,
-            name=channel.name,
-            avatar_url=channel.avatar_url,
-            banner_url=channel.banner_url,
-            description=channel.description,
-            subscribers=channel.subscribers,
-            tags=channel.tags,
-            verified=channel.verified
-        ))
-
-        # update new data
-        channel.name = name
-        channel.avatar_url = avatar_url
-        channel.banner_url = banner_url
-        channel.description = description
-        channel.subscribers = subscribers
-        channel.tags = tags
-        channel.verified = verified
-        channel.timestamp = datetime.datetime.utcnow()
 
         session.commit()
 
         return channel
 
-    def add_video(self, id: str, title: str, thumbnail_url: str, description: str, duration: float, availability: str, views: int) -> Video:
-        existing_video = session.query(Video).filter_by(
-            id=id, channel=self).first()
+    def set_status(self, status: ChannelStatus):
+        self.status = status
+        session.commit()
+
+    def add_or_update_video(self, id: str, title: str, thumbnail_url: str, description: str, duration: float, availability: str, views: int) -> Video:
+        existing_video = utils.find(self.videos, lambda x: x.id == id)
 
         video = Video(
-            channel_id=self.id,
-
             id=id,
             title=title,
             thumbnail_url=thumbnail_url,
@@ -134,10 +173,11 @@ class Channel(Base):
         )
 
         if existing_video:
-            existing_video = video
             # todo: store history
+            log("updating existing video")
+            existing_video = video
         else:
-            session.add(video)
+            self.videos.append(video)
 
         session.commit()
 
@@ -147,16 +187,19 @@ class Channel(Base):
 class ChannelVersion(Base):
     __tablename__ = 'channel_version'
 
-    id = sql.Column(sql.Integer, primary_key=True, autoincrement=True)
+    id: orm.Mapped[int] = orm.mapped_column(sa.Integer, primary_key=True, autoincrement=True)
 
-    channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
-    channel = orm.relationship("Channel", back_populates="versions")
+    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
+    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="versions")
 
-    name = sql.Column(sql.Text)
-    avatar_url = sql.Column(sql.String)
-    description = sql.Column(sql.Text)
+    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
+    banner_url: orm.Mapped[str] = orm.mapped_column(sa.String)
+    description: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    subscribers: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
 
-    timestamp = sql.Column(sql.DateTime)
+    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime)
 
 ###
 # Video
@@ -166,23 +209,25 @@ class ChannelVersion(Base):
 class Video(Base):
     __tablename__ = 'video'
 
-    id = sql.Column(sql.String, primary_key=True)
-    title = sql.Column(sql.Text)
-    thumbnail_url = sql.Column(sql.String)
-    description = sql.Column(sql.Text, nullable=True)
-    duration = sql.Column(sql.Integer)
-    views = sql.Column(sql.Integer)
+    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
+    title: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    thumbnail_url: orm.Mapped[str] = orm.mapped_column(sa.String)
+    description: orm.Mapped[str] = orm.mapped_column(sa.Text, nullable=True)
+    duration: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    views: orm.Mapped[int] = orm.mapped_column(sa.Integer)
 
     # only available on video page
-    availability = sql.Column(sql.String, nullable=True)
-    categories = sql.Column(sql.String, nullable=True)
-    tags = sql.Column(sql.String, nullable=True)
-    timestamp = sql.Column(sql.DateTime, nullable=True)
+    availability: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
+    categories: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
+    tags: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
+    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime, nullable=True)
 
-    channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
-    channel = orm.relationship("Channel", back_populates="videos")
+    # relationships
+    comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
 
-    comments = orm.relationship('VideoComment', back_populates='video')
+    # backref
+    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
+    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="videos")
 
     @classmethod
     def add(video) -> Video:
@@ -200,28 +245,21 @@ class Video(Base):
 
         session.commit()
 
-    def add_comment(self, id: str, parent_id: str | None, text: str, likes: int, channel_id: str, channel_avatar_url: str, timestamp: datetime.datetime, favorited: bool):
-        existing_comment = session.query(VideoComment).filter_by(
-            id=id, video=self).first()
-
+    def add_comment(self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime.datetime, favorited: bool):
         comment = VideoComment(
             video_id=self.id,
 
             id=id,
             parent_id=parent_id,
+            channel_id=channel_id,
             text=text,
             likes=likes,
-            channel_id=channel_id,
             channel_avatar_url=channel_avatar_url,
             timestamp=timestamp,
             favorited=favorited
         )
 
-        if existing_comment:
-            existing_comment = comment
-        else:
-            session.add(comment)
-
+        self.comments.append(comment)
         session.commit()
 
         return comment
@@ -234,25 +272,27 @@ class Video(Base):
 class VideoComment(Base):
     __tablename__ = 'video_comment'
 
-    id = sql.Column(sql.String, primary_key=True)
-    text = sql.Column(sql.Text)
-    likes = sql.Column(sql.Integer)
-    timestamp = sql.Column(sql.DateTime)
-    favorited = sql.Column(sql.Boolean)
+    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
+    text: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    likes: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime)
+    favorited: orm.Mapped[bool] = orm.mapped_column(sa.Boolean)
 
-    channel_avatar_url = sql.Column(sql.String)
+    channel_avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
 
-    parent_id = sql.Column(
-        sql.String, sql.ForeignKey('video_comment.id'))
-    parent = orm.relationship("VideoComment", back_populates="replies")
-    replies = orm.relationship("VideoComment", remote_side=[
-                               id], back_populates="parent")
+    # relationships
+    replies: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
+    # uselist=True cause for some reason it doesn't always use a list
 
-    channel_id = sql.Column(sql.String, sql.ForeignKey('channel.id'))
-    channel = orm.relationship("Channel", back_populates="comments")
+    # backref
+    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
+    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="comments")
 
-    video_id = sql.Column(sql.String, sql.ForeignKey('video.id'))
-    video = orm.relationship("Video", back_populates="comments")
+    video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"))
+    video: orm.Mapped["Video"] = orm.relationship(back_populates="comments")
+
+    parent_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video_comment.id"), nullable=True)
+    parent: orm.Mapped["VideoComment"] = orm.relationship(back_populates="replies")
 
 
 def connect():

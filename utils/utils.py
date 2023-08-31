@@ -1,6 +1,13 @@
 import requests
 
 
+def find(iterable, pred):
+    for element in iterable:
+        if pred(element):
+            return element
+    return None
+
+
 def download_image(url):
     response = requests.get(url)
 
