@@ -103,20 +103,20 @@ class Channel(Base):
 
     @staticmethod
     def get_next_of_status(status: ChannelStatus, updated_before: datetime = None):
-        return session.query(Channel).filter(Channel.status == status, sa.or_(
+        return session.execute(sa.select(Channel).filter(Channel.status == status, sa.or_(
             Channel.update_status != Channel.status,
             Channel.update_time <= updated_before
-        )).first()
+        ))).first()
 
     @staticmethod
     def get(id: str):
-        return session.query(Channel).filter_by(id=id).first()
+        return session.execute(sa.select(Channel).filter_by(id=id)).first()
 
     @classmethod
     def create_or_update(self, status: ChannelStatus | None, id: str, name: str, avatar_url: str, banner_url: str | None, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
         tags = ",".join(tags_list)
 
-        existing_channel = session.query(Channel).filter_by(id=id).first()
+        existing_channel = session.execute(sa.select(Channel).filter_by(id=id)).first()
         new_channel = existing_channel or Channel()
 
         if existing_channel:
