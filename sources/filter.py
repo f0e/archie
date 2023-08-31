@@ -7,17 +7,13 @@ MAX_VIDEOS = 300
 FILTER_LIVESTREAMS = True
 
 
-def filter_channel_about(subscribers: int, verified: bool):
+def filter_channel(subscribers: int, verified: bool, num_videos: int):
     if subscribers > MAX_SUBSCRIBERS or subscribers < MIN_SUBSCRIBERS:
         return True
 
     if verified and FILTER_VERIFIED:
         return True
 
-    return False
-
-
-def filter_channel_videos(num_videos: int):
     if (num_videos == 0 and BLOCK_NO_VIDEOS) or num_videos > MAX_VIDEOS:
         return True
 
