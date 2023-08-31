@@ -27,10 +27,6 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         about = yt.extract_info(f'https://www.youtube.com/{channelLink}/about', download=False)
 
-        if filter.filter_about(about):
-            # todo: what to do when the channel's already been added
-            return None
-
         # get avatar and banner
         avatar_url = None
         banner_url = None
@@ -45,6 +41,10 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
             verified = about['channel_is_verified']
 
         subscribers = about['channel_follower_count'] or 0
+
+        if filter.filter_channel_about(subscribers, verified):
+            # todo: what to do when the channel's already been added
+            return None
 
         channel = Channel.create_or_update(
             status=status,
@@ -75,7 +75,9 @@ def parse_videos(channel: Channel):
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         data = yt.extract_info(f'https://www.youtube.com/channel/{channel.id}/videos', download=False)
 
-        if filter.filter_videos(data):
+        num_videos = len(data['entries'])
+
+        if filter.filter_channel_videos(num_videos):
             # todo: what to do when the channel's already been added
             pass
 
@@ -139,11 +141,14 @@ def parse_video_details(video: Video):
                     favorited=comment_data['is_favorited']
                 )
 
-                if comment.channel:
+                # THIS SHOULD WORK, TODO: WHY DOES THIS NOT WORK?
+                # if comment.channel:
+                #     continue
+
+                if Channel.get(comment.channel_id):
                     continue
 
-                log(f"comment channel: {comment_data['author']} {comment_data['author_id']} {comment.channel} {comment.channel_id} {Channel.get(comment_data['author_id'])}")
-
+                # new channel, add to queue
                 parse_channel('channel/' + comment.channel_id, ChannelStatus.QUEUED)
 
         log(f"parsed video details, got {len(video.comments)} comments")
