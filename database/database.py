@@ -53,9 +53,9 @@ class ChannelStatus(enum.Enum):
 class Person(Base):
     __tablename__ = 'person'
 
-    id: orm.Mapped[int] = orm.mapped_column(sa.Integer, primary_key=True, autoincrement=True)
-    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    country: orm.Mapped[str] = orm.mapped_column(sa.String)
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
+    name: orm.Mapped[str]
+    country: orm.Mapped[str]
 
     # relationships
     channels: orm.Mapped[typing.List["Channel"]] = orm.relationship(back_populates="person", cascade="all, delete-orphan")
@@ -64,26 +64,26 @@ class Person(Base):
 class Channel(Base):
     __tablename__ = 'channel'
 
-    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
+    id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
 
     status: orm.Mapped[ChannelStatus] = orm.mapped_column(sa.Enum(ChannelStatus))
 
     # tracked
-    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
-    banner_url: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
-    description: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    subscribers: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    name: orm.Mapped[str]
+    avatar_url: orm.Mapped[str]
+    banner_url: orm.Mapped[str | None]
+    description: orm.Mapped[str]
+    subscribers: orm.Mapped[int]
     _tracked = ['name', 'avatar_url', 'banner_url', 'description', 'subscribers']
 
     # misc
-    tags: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    verified: orm.Mapped[bool] = orm.mapped_column(sa.Boolean)
+    tags: orm.Mapped[str]
+    verified: orm.Mapped[bool]
 
-    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime, default=datetime.datetime.utcnow())
+    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(default=datetime.datetime.utcnow())
 
-    # optional data
-    notes: orm.Mapped[str] = orm.mapped_column(sa.Text, nullable=True)
+    # optional user defined data
+    notes: orm.Mapped[str | None]
 
     # relationships
     versions: orm.Mapped[typing.List["ChannelVersion"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
@@ -91,8 +91,8 @@ class Channel(Base):
     videos: orm.Mapped[typing.List["Video"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
 
     # backref
-    person_id: orm.Mapped[int] = orm.mapped_column(sa.ForeignKey("person.id"), nullable=True)
-    person: orm.Mapped["Person"] = orm.relationship(back_populates="channels")
+    person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
+    person: orm.Mapped[typing.Optional["Person"]] = orm.relationship(back_populates="channels")
 
     # indexes
     __table_args__ = (
@@ -187,19 +187,19 @@ class Channel(Base):
 class ChannelVersion(Base):
     __tablename__ = 'channel_version'
 
-    id: orm.Mapped[int] = orm.mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
 
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
     channel: orm.Mapped["Channel"] = orm.relationship(back_populates="versions")
 
-    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
-    banner_url: orm.Mapped[str] = orm.mapped_column(sa.String)
-    description: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    subscribers: orm.Mapped[int] = orm.mapped_column(sa.Integer)
-    name: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    name: orm.Mapped[str]
+    avatar_url: orm.Mapped[str]
+    banner_url: orm.Mapped[str]
+    description: orm.Mapped[str]
+    subscribers: orm.Mapped[int]
+    name: orm.Mapped[str]
 
-    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime)
+    timestamp: orm.Mapped[datetime.datetime]
 
 ###
 # Video
@@ -209,18 +209,18 @@ class ChannelVersion(Base):
 class Video(Base):
     __tablename__ = 'video'
 
-    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
-    title: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    thumbnail_url: orm.Mapped[str] = orm.mapped_column(sa.String)
-    description: orm.Mapped[str] = orm.mapped_column(sa.Text, nullable=True)
-    duration: orm.Mapped[int] = orm.mapped_column(sa.Integer)
-    views: orm.Mapped[int] = orm.mapped_column(sa.Integer)
+    id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
+    title: orm.Mapped[str]
+    thumbnail_url: orm.Mapped[str]
+    description: orm.Mapped[str | None]
+    duration: orm.Mapped[int]
+    views: orm.Mapped[int]
 
     # only available on video page
-    availability: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
-    categories: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
-    tags: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
-    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime, nullable=True)
+    availability: orm.Mapped[str | None]
+    categories: orm.Mapped[str | None]
+    tags: orm.Mapped[str | None]
+    timestamp: orm.Mapped[datetime.datetime | None]
 
     # relationships
     comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
@@ -246,6 +246,8 @@ class Video(Base):
         session.commit()
 
     def add_comment(self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime.datetime, favorited: bool):
+        existing_comment = utils.find(self.comments, lambda x: x.id == id)
+
         comment = VideoComment(
             video_id=self.id,
 
@@ -259,7 +261,13 @@ class Video(Base):
             favorited=favorited
         )
 
-        self.comments.append(comment)
+        if existing_comment:
+            # todo: store history
+            log("updating existing comment")
+            existing_comment = comment
+        else:
+            self.comments.append(comment)
+
         session.commit()
 
         return comment
@@ -272,13 +280,13 @@ class Video(Base):
 class VideoComment(Base):
     __tablename__ = 'video_comment'
 
-    id: orm.Mapped[str] = orm.mapped_column(sa.String, primary_key=True)
-    text: orm.Mapped[str] = orm.mapped_column(sa.Text)
-    likes: orm.Mapped[int] = orm.mapped_column(sa.Integer)
-    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(sa.DateTime)
-    favorited: orm.Mapped[bool] = orm.mapped_column(sa.Boolean)
+    id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
+    text: orm.Mapped[str]
+    likes: orm.Mapped[int]
+    timestamp: orm.Mapped[datetime.datetime]
+    favorited: orm.Mapped[bool]
 
-    channel_avatar_url: orm.Mapped[str] = orm.mapped_column(sa.String)
+    channel_avatar_url: orm.Mapped[str]
 
     # relationships
     replies: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
@@ -291,8 +299,8 @@ class VideoComment(Base):
     video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"))
     video: orm.Mapped["Video"] = orm.relationship(back_populates="comments")
 
-    parent_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video_comment.id"), nullable=True)
-    parent: orm.Mapped["VideoComment"] = orm.relationship(back_populates="replies")
+    parent_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("video_comment.id"))
+    parent: orm.Mapped[typing.Optional["VideoComment"]] = orm.relationship(back_populates="replies")
 
 
 def connect():
