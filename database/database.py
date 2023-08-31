@@ -139,12 +139,13 @@ class Channel(Base):
                 log(f"storing history for channel {name} ({id})")
 
                 session.add(ChannelVersion(
-                    channel_id=channel.id,
-                    name=channel.name,
-                    avatar_url=channel.avatar_url,
-                    banner_url=channel.banner_url,
-                    description=channel.description,
-                    subscribers=channel.subscribers
+                    channel_id=existing_channel.id,
+                    name=existing_channel.name,
+                    avatar_url=existing_channel.avatar_url,
+                    banner_url=existing_channel.banner_url,
+                    description=existing_channel.description,
+                    subscribers=existing_channel.subscribers,
+                    timestamp=existing_channel.timestamp
                 ))
 
             existing_channel = channel
@@ -197,7 +198,6 @@ class ChannelVersion(Base):
     banner_url: orm.Mapped[str]
     description: orm.Mapped[str]
     subscribers: orm.Mapped[int]
-    name: orm.Mapped[str]
 
     timestamp: orm.Mapped[datetime.datetime]
 
