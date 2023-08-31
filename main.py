@@ -1,10 +1,10 @@
 from database import database
-from sources import youtube
+import parse
 
 if __name__ == "__main__":
     database.connect()
 
-    if not youtube.parse_channel('@em-pq6uv'):
-        print("filtered")
+    parse.init()
+    parse.parse_accepted_channels()
 
     database.close()
