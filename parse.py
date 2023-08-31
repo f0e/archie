@@ -4,7 +4,7 @@ from database.database import Channel, ChannelStatus
 from sources import youtube
 
 CHANNEL_UPDATE_GAP_HOURS = 24
-VIDEO_UPDATE_GAP_HOURS = 24 * 7
+VIDEO_UPDATE_GAP_HOURS = 24 * 7  # will only run when a channel is updated too
 
 
 def log(message):
