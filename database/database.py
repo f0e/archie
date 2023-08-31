@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from utils import utils
 
-import datetime
+from datetime import datetime
 import enum
 
 
@@ -66,7 +66,7 @@ class Channel(Base):
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
 
-    status: orm.Mapped[ChannelStatus] = orm.mapped_column(sa.Enum(ChannelStatus))
+    status: orm.Mapped[ChannelStatus]
 
     # tracked
     name: orm.Mapped[str]
@@ -80,10 +80,12 @@ class Channel(Base):
     tags: orm.Mapped[str]
     verified: orm.Mapped[bool]
 
-    timestamp: orm.Mapped[datetime.datetime] = orm.mapped_column(default=datetime.datetime.utcnow())
-
     # optional user defined data
     notes: orm.Mapped[str | None]
+
+    # archie data
+    update_time: orm.Mapped[datetime | None]
+    update_status: orm.Mapped[ChannelStatus | None]
 
     # relationships
     versions: orm.Mapped[typing.List["ChannelVersion"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
@@ -100,8 +102,11 @@ class Channel(Base):
     )
 
     @staticmethod
-    def get_next_of_status(status: ChannelStatus):
-        return session.query(Channel).filter_by(status=status).first()
+    def get_next_of_status(status: ChannelStatus, updated_before: datetime = None):
+        return session.query(Channel).filter(Channel.status == status, sa.or_(
+            Channel.update_status != Channel.status,
+            Channel.update_time <= updated_before
+        )).first()
 
     @staticmethod
     def get(id: str):
@@ -109,29 +114,16 @@ class Channel(Base):
 
     @classmethod
     def create_or_update(self, status: ChannelStatus | None, id: str, name: str, avatar_url: str, banner_url: str | None, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
-        existing_channel = session.query(Channel).filter_by(id=id).first()
-
         tags = ",".join(tags_list)
 
-        channel = Channel(
-            id=id,
-            name=name,
-            avatar_url=avatar_url,
-            banner_url=banner_url,
-            description=description,
-            subscribers=subscribers,
-            tags=tags,
-            verified=verified
-        )
-
-        if status:
-            channel.status = status
+        existing_channel = session.query(Channel).filter_by(id=id).first()
+        new_channel = existing_channel or Channel()
 
         if existing_channel:
             changes = False
 
             for var in self._tracked:
-                if getattr(channel, var) != getattr(existing_channel, var):
+                if getattr(new_channel, var) != getattr(existing_channel, var):
                     changes = True
                     break
 
@@ -148,41 +140,53 @@ class Channel(Base):
                     timestamp=existing_channel.timestamp
                 ))
 
-            existing_channel = channel
-        else:
-            session.add(channel)
+        # set fields
+        if status:
+            new_channel.status = status
+
+        new_channel.id = id
+        new_channel.name = name
+        new_channel.avatar_url = avatar_url
+        new_channel.banner_url = banner_url
+        new_channel.description = description
+        new_channel.subscribers = subscribers
+        new_channel.tags = tags
+        new_channel.verified = verified
+
+        if not existing_channel:
+            session.add(new_channel)
 
         session.commit()
 
-        return channel
+        return new_channel
+
+    def add_or_update_video(self, id: str, title: str, thumbnail_url: str, description: str, duration: float, availability: str, views: int) -> Video:
+        existing_video = utils.find(self.videos, lambda x: x.id == id)
+        new_video = existing_video or Video()
+
+        # set fields
+        new_video.id = id
+        new_video.title = title
+        new_video.thumbnail_url = thumbnail_url
+        new_video.description = description
+        new_video.duration = duration
+        new_video.availability = availability
+        new_video.views = views
+
+        if not existing_video:
+            self.videos.append(new_video)
+
+        session.commit()
+
+        return new_video
+
+    def set_updated(self):
+        self.update_time = datetime.utcnow()
+        self.update_status = self.status
 
     def set_status(self, status: ChannelStatus):
         self.status = status
         session.commit()
-
-    def add_or_update_video(self, id: str, title: str, thumbnail_url: str, description: str, duration: float, availability: str, views: int) -> Video:
-        existing_video = utils.find(self.videos, lambda x: x.id == id)
-
-        video = Video(
-            id=id,
-            title=title,
-            thumbnail_url=thumbnail_url,
-            description=description,
-            duration=duration,
-            availability=availability,
-            views=views
-        )
-
-        if existing_video:
-            # todo: store history
-            log("updating existing video")
-            existing_video = video
-        else:
-            self.videos.append(video)
-
-        session.commit()
-
-        return video
 
 
 class ChannelVersion(Base):
@@ -199,7 +203,7 @@ class ChannelVersion(Base):
     description: orm.Mapped[str]
     subscribers: orm.Mapped[int]
 
-    timestamp: orm.Mapped[datetime.datetime]
+    timestamp: orm.Mapped[datetime]
 
 ###
 # Video
@@ -216,11 +220,16 @@ class Video(Base):
     duration: orm.Mapped[int]
     views: orm.Mapped[int]
 
+    fully_parsed: orm.Mapped[bool] = orm.mapped_column(default=False)
+
     # only available on video page
     availability: orm.Mapped[str | None]
     categories: orm.Mapped[str | None]
     tags: orm.Mapped[str | None]
-    timestamp: orm.Mapped[datetime.datetime | None]
+    timestamp: orm.Mapped[datetime | None]
+
+    # archie data
+    update_time: orm.Mapped[datetime | None]
 
     # relationships
     comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
@@ -236,41 +245,41 @@ class Video(Base):
 
         return video
 
-    def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime.datetime):
+    def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime):
         self.thumbnail_url = thumbnail_url
         self.availability = availability
         self.categories = ",".join(categories_list)
         self.tags = ",".join(tags_list)
         self.timestamp = timestamp
 
+        self.fully_parsed = True
+
         session.commit()
 
-    def add_comment(self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime.datetime, favorited: bool):
+    def add_comment(self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime, favorited: bool):
         existing_comment = utils.find(self.comments, lambda x: x.id == id)
+        new_comment = existing_comment or VideoComment()
 
-        comment = VideoComment(
-            video_id=self.id,
+        # set fields
+        new_comment.video_id = self.id
+        new_comment.id = id
+        new_comment.parent_id = parent_id
+        new_comment.channel_id = channel_id
+        new_comment.text = text
+        new_comment.likes = likes
+        new_comment.channel_avatar_url = channel_avatar_url
+        new_comment.timestamp = timestamp
+        new_comment.favorited = favorited
 
-            id=id,
-            parent_id=parent_id,
-            channel_id=channel_id,
-            text=text,
-            likes=likes,
-            channel_avatar_url=channel_avatar_url,
-            timestamp=timestamp,
-            favorited=favorited
-        )
-
-        if existing_comment:
-            # todo: store history
-            log("updating existing comment")
-            existing_comment = comment
-        else:
-            self.comments.append(comment)
+        if not existing_comment:
+            self.comments.append(new_comment)
 
         session.commit()
 
-        return comment
+        return new_comment
+
+    def set_updated(self):
+        self.update_time = datetime.utcnow()
 
 ###
 # Comment
@@ -283,7 +292,7 @@ class VideoComment(Base):
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     text: orm.Mapped[str]
     likes: orm.Mapped[int]
-    timestamp: orm.Mapped[datetime.datetime]
+    timestamp: orm.Mapped[datetime]
     favorited: orm.Mapped[bool]
 
     channel_avatar_url: orm.Mapped[str]

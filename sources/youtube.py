@@ -16,6 +16,10 @@ def debug_write(yt, data, filename):
         out_file.write(json.dumps(yt.sanitize_info(data)))
 
 
+def update_channel(channel: Channel) -> Channel | None:
+    return parse_channel('channel/' + channel.id, channel.status)
+
+
 def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
     # adds a channel to the database. will filter out unwanted channels.
     # only adds basic information on /about page
@@ -58,9 +62,19 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
             verified=verified
         )
 
+        parse_videos(channel)  # it takes like no time so just do it for all channels
+
+        if channel.status == ChannelStatus.ACCEPTED:
+            for video in channel.videos:
+                if not video.fully_parsed:
+                    # video hasn't been parsed yet
+                    parse_video_details(video)
+
         log(f"parsed channel {channel.name} ({channel.id})")
 
-        return channel
+        channel.set_updated()
+
+    return channel
 
 
 def parse_videos(channel: Channel):
@@ -73,15 +87,21 @@ def parse_videos(channel: Channel):
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        data = yt.extract_info(f'https://www.youtube.com/channel/{channel.id}/videos', download=False)
+        try:
+            data = yt.extract_info(f'https://www.youtube.com/channel/{channel.id}/videos', download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if 'This channel does not have a videos tab' in e.msg:
+                log(f"channel {channel.name} has no videos, skipping video parsing ({channel.id})")
+            else:
+                log(f"misc error parsing channel {channel.name} videos, skipping video parsing")
+
+            return None
 
         num_videos = len(data['entries'])
 
         if filter.filter_channel_videos(num_videos):
             # todo: what to do when the channel's already been added
             pass
-
-        videos = []
 
         for entry in data['entries']:
             video = channel.add_or_update_video(
@@ -94,10 +114,9 @@ def parse_videos(channel: Channel):
                 views=entry['view_count']
             )
 
-            log(f"parsed video {video.title} for channel {channel.id} ({video.id})")
-            videos.append(video)
+            log(f"parsed basic video info for {video.title} in channel {channel.id} ({video.id})")
 
-        return videos
+    return channel.videos
 
 
 def parse_video_details(video: Video):
@@ -150,6 +169,8 @@ def parse_video_details(video: Video):
 
                 # new channel, add to queue
                 parse_channel('channel/' + comment.channel_id, ChannelStatus.QUEUED)
+
+        video.set_updated()
 
         log(f"parsed video details, got {len(video.comments)} comments")
 
