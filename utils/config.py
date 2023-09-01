@@ -1,6 +1,7 @@
 import json
 
 from pathlib import Path
+import os
 
 from dacite import from_dict
 
@@ -12,6 +13,8 @@ CFG_PATH = Path('config.json')
 
 @dataclass
 class Config():
+    archie_path: str = os.path.join(Path.home(), "archie")
+
     min_subscribers: int = 0
     max_subscribers: int = 30000
 
@@ -24,23 +27,22 @@ class Config():
     channel_update_gap_hours: int = 24
     video_update_gap_hours: int = 24 * 7
 
+    def to_json(self):
+        return json.loads(TypeAdapter(Config).dump_json(self))
+
+
+def save_cfg(cfg: Config):
+    with CFG_PATH.open('w') as f:
+        json.dump(cfg.to_json(), f, indent=2)
+
 
 def load_cfg():
     if not CFG_PATH.exists() or CFG_PATH.stat().st_size == 0:
-        with CFG_PATH.open('w') as f:
-            # converts the config dataclass into json (bytes) and loads it
-            data = json.loads(TypeAdapter(Config).dump_json(Config))
-            json.dump(data, f, indent=2)
-
-            return data
+        save_cfg(Config())
 
     with CFG_PATH.open('r') as f:
-        return json.load(f)
+        return from_dict(data_class=Config, data=json.load(f))
 
 
-def save_cfg(cfg):
-    with CFG_PATH.open('w') as f:
-        json.dump(cfg, f)
-
-
-settings = from_dict(data_class=Config, data=load_cfg())
+settings = load_cfg()
+save_cfg(settings)
