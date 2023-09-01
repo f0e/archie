@@ -1,5 +1,5 @@
 import json
-import datetime
+from datetime import datetime
 from typing import Dict
 import yt_dlp
 import threading
@@ -23,88 +23,62 @@ def update_channel(channel: Channel) -> Channel | None:
 
 def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
     # adds a channel to the database. will filter out unwanted channels.
-    # only adds basic information on /about page
 
     ydl_opts = {
+        'extract_flat': True,  # don't parse individual videos, just get the data available from the /videos page
         'quiet': True
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        about = yt.extract_info(f'https://www.youtube.com/{channelLink}/about', download=False)
+        try:
+            data = yt.extract_info(f'https://www.youtube.com/{channelLink}/videos', download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if 'This channel does not have a videos tab' in e.msg:
+                log(f"channel has no videos, fetching about page instead ({channelLink})")
+            else:
+                log(f"misc parsing error, skipping parsing ({channelLink})")
+                return None
+
+            data = yt.extract_info(f'https://www.youtube.com/{channelLink}/about', download=False)
 
         # get avatar and banner
         avatar_url = None
         banner_url = None
-        for image in about['thumbnails']:
+        for image in data['thumbnails']:
             if image['id'] == 'avatar_uncropped':
                 avatar_url = image['url']
             elif image['id'] == 'banner_uncropped':
                 banner_url = image['url']
 
         verified = False
-        if 'channel_is_verified' in about:
-            verified = about['channel_is_verified']
+        if 'channel_is_verified' in data:
+            verified = data['channel_is_verified']
 
-        subscribers = about['channel_follower_count'] or 0
+        subscribers = data['channel_follower_count'] or 0
 
-        if filter.filter_channel_about(subscribers, verified):
+        num_videos = len(data['entries'])
+
+        if filter.filter_channel(subscribers, verified, num_videos):
             # todo: what to do when the channel's already been added
             return None
 
         channel = Channel.create_or_update(
             status=status,
-            id=about['channel_id'],
-            name=about['channel'],
+            id=data['channel_id'],
+            name=data['channel'],
             avatar_url=avatar_url,
             banner_url=banner_url,
-            description=about['description'],
+            description=data['description'],
             subscribers=subscribers,
-            tags_list=about['tags'],
+            tags_list=data['tags'],
             verified=verified
         )
 
-        parse_videos(channel)  # it takes like no time so just do it for all channels
-
-        if channel.status == ChannelStatus.ACCEPTED:
-            for video in channel.videos:
-                if not video.fully_parsed:
-                    # video hasn't been parsed yet
-                    parse_video_details(video)
-
         log(f"parsed channel {channel.name} ({channel.id})")
 
-        channel.set_updated()
-
-    return channel
-
-
-def parse_videos(channel: Channel):
-    # updates a channel's videos, playlists, etc.
-
-    ydl_opts = {
-        # don't get videos, just get the data available from the /videos page
-        'extract_flat': True,
-        'quiet': True
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        try:
-            data = yt.extract_info(f'https://www.youtube.com/channel/{channel.id}/videos', download=False)
-        except yt_dlp.utils.DownloadError as e:
-            if 'This channel does not have a videos tab' in e.msg:
-                log(f"channel {channel.name} has no videos, skipping video parsing ({channel.id})")
-            else:
-                log(f"misc error parsing channel {channel.name} videos, skipping video parsing")
-
-            return None
-
-        num_videos = len(data['entries'])
-
-        if filter.filter_channel_videos(num_videos):
-            # todo: what to do when the channel's already been added
-            pass
-
         for entry in data['entries']:
+            debug_write(yt, entry, "zz-entry")
+
             video = channel.add_or_update_video(
                 id=entry['id'],
                 title=entry['title'],
@@ -115,9 +89,16 @@ def parse_videos(channel: Channel):
                 views=entry['view_count']
             )
 
-            log(f"parsed basic video info for {video.title} in channel {channel.id} ({video.id})")
+            if channel.status == ChannelStatus.ACCEPTED:
+                if not video.fully_parsed:
+                    # video hasn't been parsed yet
+                    parse_video_details(video)
 
-    return channel.videos
+        log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
+
+        channel.set_updated()
+
+    return channel
 
 
 def parse_video_details(video: Video):
@@ -140,7 +121,7 @@ def parse_video_details(video: Video):
             categories_list=data['categories'],
             tags_list=data['tags'],
             availability=data['availability'],
-            timestamp=datetime.datetime.utcfromtimestamp(data['epoch']),
+            timestamp=datetime.utcfromtimestamp(data['epoch']),
         )
 
         print(video.availability)
@@ -162,7 +143,7 @@ def parse_video_details(video: Video):
                     likes=comment_data['like_count'] or 0,
                     channel_id=comment_data['author_id'],
                     channel_avatar_url=comment_data['author_thumbnail'],
-                    timestamp=datetime.datetime.utcfromtimestamp(comment_data['timestamp']),
+                    timestamp=datetime.utcfromtimestamp(comment_data['timestamp']),
                     favorited=comment_data['is_favorited']
                 )
 
