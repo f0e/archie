@@ -8,8 +8,8 @@ from datetime import datetime
 import enum
 
 
-def log(message):
-    print("[db] " + message)
+def log(*args, **kwargs):
+    print("[db] " + " ".join(map(str, args)), **kwargs)
 
 
 # TODO: handle this shit in main
@@ -104,6 +104,7 @@ class Channel(Base):
     @staticmethod
     def get_next_of_status(status: ChannelStatus, updated_before: datetime = None):
         return session.query(Channel).filter(Channel.status == status, sa.or_(
+            Channel.update_time == None,
             Channel.update_status != Channel.status,
             Channel.update_time <= updated_before
         )).first()
@@ -183,6 +184,7 @@ class Channel(Base):
     def set_updated(self):
         self.update_time = datetime.utcnow()
         self.update_status = self.status
+        session.commit()
 
     def set_status(self, status: ChannelStatus):
         self.status = status
@@ -233,10 +235,18 @@ class Video(Base):
 
     # relationships
     comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
+    downloads: orm.Mapped[typing.List["VideoDownload"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
 
     # backref
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
     channel: orm.Mapped["Channel"] = orm.relationship(back_populates="videos")
+
+    @staticmethod
+    def get_next_download():
+        return session.query(Video) \
+            .join(VideoDownload, isouter=True) \
+            .join(Channel) \
+            .where(VideoDownload.format == None, Channel.status == ChannelStatus.ACCEPTED).first()
 
     @classmethod
     def add(video) -> Video:
@@ -251,8 +261,6 @@ class Video(Base):
         self.categories = ",".join(categories_list)
         self.tags = ",".join(tags_list)
         self.timestamp = timestamp
-
-        self.fully_parsed = True
 
         session.commit()
 
@@ -278,8 +286,33 @@ class Video(Base):
 
         return new_comment
 
+    def add_download(self, path: str, format: str):
+        download = VideoDownload(
+            path=path,
+            format=format
+        )
+
+        self.downloads.append(download)
+        session.commit()
+
+        return download
+
     def set_updated(self):
         self.update_time = datetime.utcnow()
+
+        if not self.fully_parsed:
+            self.fully_parsed = True
+
+
+class VideoDownload(Base):
+    __tablename__ = 'video_download'
+
+    # backref
+    video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
+    video: orm.Mapped["Video"] = orm.relationship(back_populates="downloads")
+
+    format: orm.Mapped[str] = orm.mapped_column(primary_key=True)
+    path: orm.Mapped[str]
 
 ###
 # Comment

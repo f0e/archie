@@ -1,15 +1,16 @@
 import json
 from datetime import datetime
 from typing import Dict
+from pathlib import Path
+import os
 import yt_dlp
-import threading
 
 from database.database import Channel, ChannelStatus, Video, VideoComment
 from . import filter
 
 
-def log(message):
-    print("[youtube] " + message)
+def log(*args, **kwargs):
+    print("[youtube] " + " ".join(map(str, args)), **kwargs)
 
 
 def debug_write(yt, data, filename):
@@ -29,6 +30,8 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
         'quiet': True
     }
 
+    log(f"parsing channel {channelLink}")
+
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         try:
             data = yt.extract_info(f'https://www.youtube.com/{channelLink}/videos', download=False)
@@ -39,7 +42,14 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
                 log(f"misc parsing error, skipping parsing ({channelLink})")
                 return None
 
-            data = yt.extract_info(f'https://www.youtube.com/{channelLink}/about', download=False)
+            try:
+                data = yt.extract_info(f'https://www.youtube.com/{channelLink}/about', download=False)
+            except yt_dlp.utils.DownloadError as e:
+                if 'This channel does not have a about tab' in e.msg:
+                    log(f"channel doesn't have an about page? skipping")
+                    return None
+                else:
+                    raise e
 
         # get avatar and banner
         avatar_url = None
@@ -109,6 +119,8 @@ def parse_video_details(video: Video):
         'quiet': True
     }
 
+    log(f"parsing video {video.title} by {video.channel.name} ({video.id})")
+
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         data = yt.extract_info(f'https://www.youtube.com/watch?v={video.id}', download=False)
 
@@ -123,11 +135,6 @@ def parse_video_details(video: Video):
             availability=data['availability'],
             timestamp=datetime.utcfromtimestamp(data['epoch']),
         )
-
-        print(video.availability)
-
-        if video.availability == "public" or video.availability == "unlisted":
-            threading.Thread(download_video(video)).start()
 
         if data['comments']:
             for comment_data in data['comments']:
@@ -150,9 +157,6 @@ def parse_video_details(video: Video):
                 if comment.channel:
                     continue
 
-                if Channel.get(comment.channel_id):
-                    continue
-
                 # new channel, add to queue
                 parse_channel('channel/' + comment.channel_id, ChannelStatus.QUEUED)
 
@@ -163,7 +167,9 @@ def parse_video_details(video: Video):
     return True
 
 
-def download_video(video: Video):
+def download_video(video: Video, download_folder: Path):
+    # returns the downloaded format
+
     ydl_opts = {
         # don't redownload videos
         'nooverwrites': True,
@@ -181,8 +187,16 @@ def download_video(video: Video):
             {'key': 'EmbedThumbnail', 'already_have_thumbnail': False, }],
 
         # output folder
-        'outtmpl': f'{video.channel_id}/{video.id}'
+        'outtmpl': os.path.join(download_folder, "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s")
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        error_code = yt.download(f'https://www.youtube.com/watch?v={video.id}')
+        log(f"downloading video {video.title} ({video.id})")
+
+        data = yt.extract_info(f'https://www.youtube.com/watch?v={video.id}', download=True)
+        download_data = data['requested_downloads'][0]
+
+        return {
+            'path': download_data['filepath'],
+            'format': download_data['format_id']
+        }

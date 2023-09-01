@@ -6,8 +6,8 @@ from sources import youtube
 from utils.config import settings
 
 
-def log(message):
-    print("[parse] " + message)
+def log(*args, **kwargs):
+    print("[parse] " + " ".join(map(str, args)), **kwargs)
 
 
 def parse_accepted_channels():
@@ -23,10 +23,10 @@ def parse_accepted_channels():
         video_min_update_time = datetime.utcnow() - timedelta(hours=settings.video_update_gap_hours)
 
         for video in channel.videos:
-            if video.update_time > video_min_update_time:
-                continue
+            if video.fully_parsed:
+                if video.update_time > video_min_update_time:
+                    continue
 
-            log(f"updating video {video.title} by {channel.name} ({video.id})")
             youtube.parse_video_details(video)
 
         log(f"finished parsing {channel.name} ({channel.id})")
