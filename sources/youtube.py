@@ -171,20 +171,29 @@ def download_video(video: Video, download_folder: Path):
     # returns the downloaded format
 
     ydl_opts = {
+        'quiet': True,
+        'noprogress': True,
+
         # don't redownload videos
         'nooverwrites': True,
 
         # bypass geographic restrictions
         'geo_bypass': True,
 
+        # write mkv files (prevent webm warning, it just uses mkv anyway)
+        'merge_output_format': 'mkv',
+
         # don't download livestreams
         # 'match_filter': '!is_live',
+
+        'writethumbnail': True,
 
         'format': 'bv*+ba',
 
         'postprocessors': [
             {'key': 'FFmpegMetadata', 'add_metadata': True, },
-            {'key': 'EmbedThumbnail', 'already_have_thumbnail': False, }],
+            {'key': 'EmbedThumbnail', 'already_have_thumbnail': False, }
+        ],
 
         # output folder
         'outtmpl': os.path.join(download_folder, "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s")
