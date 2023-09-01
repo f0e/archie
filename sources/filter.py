@@ -1,17 +1,13 @@
 from utils.config import settings
 
 
-def filter_channel_about(subscribers: int, verified: bool):
+def filter_channel(subscribers: int, verified: bool, num_videos: int):
     if subscribers > settings.max_subscribers or subscribers < settings.min_subscribers:
         return True
 
     if verified and settings.filter_verified:
         return True
 
-    return False
-
-
-def filter_channel_videos(num_videos: int):
     if (num_videos == 0 and settings.block_no_videos) or num_videos > settings.max_videos:
         return True
 
