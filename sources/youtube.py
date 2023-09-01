@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from typing import Dict
 import yt_dlp
+import threading
 
 from database.database import Channel, ChannelStatus, Video, VideoComment
 from . import filter
@@ -123,6 +124,11 @@ def parse_video_details(video: Video):
             timestamp=datetime.utcfromtimestamp(data['epoch']),
         )
 
+        print(video.availability)
+
+        if video.availability == "public" or video.availability == "unlisted":
+            threading.Thread(download_video(video)).start()
+
         if data['comments']:
             for comment_data in data['comments']:
                 # fix parent id
@@ -142,8 +148,8 @@ def parse_video_details(video: Video):
                 )
 
                 # THIS SHOULD WORK, TODO: WHY DOES THIS NOT WORK?
-                # if comment.channel:
-                #     continue
+                if comment.channel:
+                    continue
 
                 if Channel.get(comment.channel_id):
                     continue
@@ -156,3 +162,28 @@ def parse_video_details(video: Video):
         log(f"parsed video details, got {len(video.comments)} comments")
 
     return True
+
+
+def download_video(video: Video):
+    ydl_opts = {
+        # don't redownload videos
+        'nooverwrites': True,
+
+        # bypass geographic restrictions
+        'geo_bypass': True,
+
+        # don't download livestreams
+        # 'match_filter': '!is_live',
+
+        'format': 'bv*+ba',
+
+        'postprocessors': [
+            {'key': 'FFmpegMetadata', 'add_metadata': True, },
+            {'key': 'EmbedThumbnail', 'already_have_thumbnail': False, }],
+
+        # output folder
+        'outtmpl': f'{video.channel_id}/{video.id}'
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        error_code = yt.download(f'https://www.youtube.com/watch?v={video.id}')
