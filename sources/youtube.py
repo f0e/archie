@@ -147,7 +147,6 @@ def parse_video_details(video: Video):
                     favorited=comment_data['is_favorited']
                 )
 
-                # THIS SHOULD WORK, TODO: WHY DOES THIS NOT WORK?
                 if comment.channel:
                     continue
 
