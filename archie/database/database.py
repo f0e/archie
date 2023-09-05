@@ -31,7 +31,7 @@ class Base(orm.DeclarativeBase):
     def __repr__(self) -> str:
         return self._repr(id=self.id)
 
-    def _repr(self, **fields: typing.Dict[str, typing.Any]) -> str:
+    def _repr(self, **fields: dict[str, typing.Any]) -> str:
         """
         Helper for __repr__
         """
@@ -63,7 +63,7 @@ class Person(Base):
     country: orm.Mapped[str]
 
     # relationships
-    channels: orm.Mapped[typing.List["Channel"]] = orm.relationship(back_populates="person", cascade="all, delete-orphan")
+    channels: orm.Mapped[list[Channel]] = orm.relationship(back_populates="person", cascade="all, delete-orphan")
 
 
 class Channel(Base):
@@ -93,13 +93,13 @@ class Channel(Base):
     update_status: orm.Mapped[ChannelStatus | None]
 
     # relationships
-    versions: orm.Mapped[typing.List["ChannelVersion"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-    comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-    videos: orm.Mapped[typing.List["Video"]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    versions: orm.Mapped[list[ChannelVersion]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    videos: orm.Mapped[list[Video]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
 
     # backref
     person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
-    person: orm.Mapped[typing.Optional["Person"]] = orm.relationship(back_populates="channels")
+    person: orm.Mapped[Person | None] = orm.relationship(back_populates="channels")
 
     # indexes
     __table_args__ = (sa.Index("idx_status", "status"),)
@@ -215,7 +215,7 @@ class ChannelVersion(Base):
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
 
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="versions")
+    channel: orm.Mapped[Channel] = orm.relationship(back_populates="versions")
 
     name: orm.Mapped[str]
     avatar_url: orm.Mapped[str]
@@ -253,12 +253,12 @@ class Video(Base):
     update_time: orm.Mapped[datetime | None]
 
     # relationships
-    comments: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
-    downloads: orm.Mapped[typing.List["VideoDownload"]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
+    comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
+    downloads: orm.Mapped[list[VideoDownload]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
 
     # backref
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="videos")
+    channel: orm.Mapped[Channel] = orm.relationship(back_populates="videos")
 
     @staticmethod
     def get_next_download():
@@ -330,7 +330,7 @@ class VideoDownload(Base):
 
     # backref
     video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
-    video: orm.Mapped["Video"] = orm.relationship(back_populates="downloads")
+    video: orm.Mapped[Video] = orm.relationship(back_populates="downloads")
 
     format: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     path: orm.Mapped[str]
@@ -353,18 +353,18 @@ class VideoComment(Base):
     channel_avatar_url: orm.Mapped[str]
 
     # relationships
-    replies: orm.Mapped[typing.List["VideoComment"]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
+    replies: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
     # uselist=True cause for some reason it doesn't always use a list
 
     # backref
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped["Channel"] = orm.relationship(back_populates="comments")
+    channel: orm.Mapped[Channel] = orm.relationship(back_populates="comments")
 
     video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"))
-    video: orm.Mapped["Video"] = orm.relationship(back_populates="comments")
+    video: orm.Mapped[Video] = orm.relationship(back_populates="comments")
 
     parent_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("video_comment.id"))
-    parent: orm.Mapped[typing.Optional["VideoComment"]] = orm.relationship(back_populates="replies")
+    parent: orm.Mapped[VideoComment | None] = orm.relationship(back_populates="replies")
 
 
 def connect():
