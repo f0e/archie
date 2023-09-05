@@ -27,7 +27,7 @@ def download_videos():
         download_path = os.path.join(settings.archie_path, f"downloads")
         download_data = youtube.download_video(video, download_path)
 
-        video.add_download(download_data['path'], download_data['format'])
+        video.add_download(download_data["path"], download_data["format"])
 
         log(f"finished downloading {video.title} to {download_data['path']}, format {download_data['format']}")
 

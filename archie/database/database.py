@@ -31,16 +31,16 @@ class Base(orm.DeclarativeBase):
         return self._repr(id=self.id)
 
     def _repr(self, **fields: typing.Dict[str, typing.Any]) -> str:
-        '''
+        """
         Helper for __repr__
-        '''
+        """
         field_strings = []
         at_least_one_attached_attribute = False
         for key, field in fields.items():
             try:
-                field_strings.append(f'{key}={field!r}')
+                field_strings.append(f"{key}={field!r}")
             except sa.orm.exc.DetachedInstanceError:
-                field_strings.append(f'{key}=DetachedInstanceError')
+                field_strings.append(f"{key}=DetachedInstanceError")
             else:
                 at_least_one_attached_attribute = True
         if at_least_one_attached_attribute:
@@ -55,7 +55,7 @@ class ChannelStatus(enum.Enum):
 
 
 class Person(Base):
-    __tablename__ = 'person'
+    __tablename__ = "person"
 
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
     name: orm.Mapped[str]
@@ -66,7 +66,7 @@ class Person(Base):
 
 
 class Channel(Base):
-    __tablename__ = 'channel'
+    __tablename__ = "channel"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
 
@@ -78,7 +78,7 @@ class Channel(Base):
     banner_url: orm.Mapped[str | None]
     description: orm.Mapped[str]
     subscribers: orm.Mapped[int]
-    _tracked = ['name', 'avatar_url', 'banner_url', 'description', 'subscribers']
+    _tracked = ["name", "avatar_url", "banner_url", "description", "subscribers"]
 
     # misc
     tags: orm.Mapped[str]
@@ -101,24 +101,35 @@ class Channel(Base):
     person: orm.Mapped[typing.Optional["Person"]] = orm.relationship(back_populates="channels")
 
     # indexes
-    __table_args__ = (
-        sa.Index('idx_status', 'status'),
-    )
+    __table_args__ = (sa.Index("idx_status", "status"),)
 
     @staticmethod
     def get_next_of_status(status: ChannelStatus, updated_before: datetime = None):
-        return session.query(Channel).filter(Channel.status == status, sa.or_(
-            Channel.update_time == None,
-            Channel.update_status != Channel.status,
-            Channel.update_time <= updated_before
-        )).first()
+        return (
+            session.query(Channel)
+            .filter(
+                Channel.status == status, sa.or_(Channel.update_time == None, Channel.update_status != Channel.status, Channel.update_time <= updated_before)
+            )
+            .first()
+        )
 
     @staticmethod
     def get(id: str):
         return session.query(Channel).filter_by(id=id).first()
 
     @classmethod
-    def create_or_update(self, status: ChannelStatus | None, id: str, name: str, avatar_url: str, banner_url: str | None, description: str, subscribers: int, tags_list: list[str], verified: bool) -> Channel:
+    def create_or_update(
+        self,
+        status: ChannelStatus | None,
+        id: str,
+        name: str,
+        avatar_url: str,
+        banner_url: str | None,
+        description: str,
+        subscribers: int,
+        tags_list: list[str],
+        verified: bool,
+    ) -> Channel:
         tags = ",".join(tags_list)
 
         existing_channel = session.query(Channel).filter_by(id=id).first()
@@ -135,15 +146,17 @@ class Channel(Base):
             if changes:
                 log(f"storing history for channel {name} ({id})")
 
-                session.add(ChannelVersion(
-                    channel_id=existing_channel.id,
-                    name=existing_channel.name,
-                    avatar_url=existing_channel.avatar_url,
-                    banner_url=existing_channel.banner_url,
-                    description=existing_channel.description,
-                    subscribers=existing_channel.subscribers,
-                    timestamp=existing_channel.timestamp
-                ))
+                session.add(
+                    ChannelVersion(
+                        channel_id=existing_channel.id,
+                        name=existing_channel.name,
+                        avatar_url=existing_channel.avatar_url,
+                        banner_url=existing_channel.banner_url,
+                        description=existing_channel.description,
+                        subscribers=existing_channel.subscribers,
+                        timestamp=existing_channel.timestamp,
+                    )
+                )
 
         # set fields
         if status:
@@ -196,7 +209,7 @@ class Channel(Base):
 
 
 class ChannelVersion(Base):
-    __tablename__ = 'channel_version'
+    __tablename__ = "channel_version"
 
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
 
@@ -211,13 +224,14 @@ class ChannelVersion(Base):
 
     timestamp: orm.Mapped[datetime]
 
+
 ###
 # Video
 ###
 
 
 class Video(Base):
-    __tablename__ = 'video'
+    __tablename__ = "video"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     title: orm.Mapped[str]
@@ -247,10 +261,13 @@ class Video(Base):
 
     @staticmethod
     def get_next_download():
-        return session.query(Video) \
-            .join(VideoDownload, isouter=True) \
-            .join(Channel) \
-            .where(VideoDownload.format == None, Channel.status == ChannelStatus.ACCEPTED).first()
+        return (
+            session.query(Video)
+            .join(VideoDownload, isouter=True)
+            .join(Channel)
+            .where(VideoDownload.format == None, Channel.status == ChannelStatus.ACCEPTED)
+            .first()
+        )
 
     @classmethod
     def add(video) -> Video:
@@ -268,7 +285,9 @@ class Video(Base):
 
         session.commit()
 
-    def add_comment(self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime, favorited: bool):
+    def add_comment(
+        self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime, favorited: bool
+    ):
         existing_comment = utils.find(self.comments, lambda x: x.id == id)
         new_comment = existing_comment or VideoComment()
 
@@ -291,10 +310,7 @@ class Video(Base):
         return new_comment
 
     def add_download(self, path: str, format: str):
-        download = VideoDownload(
-            path=path,
-            format=format
-        )
+        download = VideoDownload(path=path, format=format)
 
         self.downloads.append(download)
         session.commit()
@@ -309,7 +325,7 @@ class Video(Base):
 
 
 class VideoDownload(Base):
-    __tablename__ = 'video_download'
+    __tablename__ = "video_download"
 
     # backref
     video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
@@ -318,13 +334,14 @@ class VideoDownload(Base):
     format: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     path: orm.Mapped[str]
 
+
 ###
 # Comment
 ###
 
 
 class VideoComment(Base):
-    __tablename__ = 'video_comment'
+    __tablename__ = "video_comment"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     text: orm.Mapped[str]
@@ -355,6 +372,7 @@ def connect():
 
 def close():
     db.dispose()
+
 
 @contextmanager
 def database_connection():

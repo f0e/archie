@@ -34,8 +34,8 @@ def parse_accepted_channels():
 
 
 def init():
-    START_CHANNEL = 'UC3V9Tsy08G41oXr6TIg9xIw'
+    START_CHANNEL = "UC3V9Tsy08G41oXr6TIg9xIw"
     if Channel.get(START_CHANNEL):
         return
 
-    youtube.parse_channel('channel/' + START_CHANNEL, ChannelStatus.ACCEPTED)
+    youtube.parse_channel("channel/" + START_CHANNEL, ChannelStatus.ACCEPTED)
