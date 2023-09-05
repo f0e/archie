@@ -20,12 +20,18 @@ requests = "^2.31.0"
 dacite = "^1.8.1"
 pydantic = "^2.3.0"
 
+[tool.poetry.group.dev.dependencies]
+black = "^23.7.0"
+
 [tool.poetry.scripts]
 archie = 'archie.cli:archie'
 
-[tool.black]
-line-length = 180
+[tool.poe.tasks.format]
+help = "Run black on the code base"
+cmd = "black ."
 
+[tool.black]
+line-length = 160
 
 [build-system]
 requires = ["poetry-core"]
