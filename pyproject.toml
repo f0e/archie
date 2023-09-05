@@ -22,16 +22,30 @@ pydantic = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.7.0"
+isort = "^5.12.0"
+pre-commit = "^3.4.0"
 
 [tool.poetry.scripts]
 archie = 'archie.cli:archie'
 
-[tool.poe.tasks.format]
+[tool.poe.tasks.format-isort]
+help = "Run isort on the code base"
+cmd = "isort ."
+
+[tool.poe.tasks.format-black]
 help = "Run black on the code base"
 cmd = "black ."
 
+[tool.poe.tasks.format]
+help = "Run formating tools on the code base"
+sequence = ["format-isort", "format-black"]
+
+
 [tool.black]
 line-length = 160
+
+[tool.isort]
+profile = "black"
 
 [build-system]
 requires = ["poetry-core"]

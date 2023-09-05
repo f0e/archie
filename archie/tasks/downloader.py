@@ -1,8 +1,8 @@
 import threading
 import time
 
-from ..sources import youtube, wayback
 from ..database.database import Video
+from ..sources import wayback, youtube
 from ..utils.config import settings
 
 
