@@ -105,11 +105,16 @@ class Channel(Base):
     __table_args__ = (sa.Index("idx_status", "status"),)
 
     @staticmethod
-    def get_next_of_status(status: ChannelStatus, updated_before: datetime = None):
+    def get_next_of_status(status: ChannelStatus, updated_before: datetime | None = None):
         return (
             session.query(Channel)
             .filter(
-                Channel.status == status, sa.or_(Channel.update_time == None, Channel.update_status != Channel.status, Channel.update_time <= updated_before)
+                Channel.status == status,
+                sa.or_(
+                    Channel.update_time is None,
+                    Channel.update_status != Channel.status,
+                    Channel.update_time <= updated_before,
+                ),
             )
             .first()
         )
@@ -266,16 +271,9 @@ class Video(Base):
             session.query(Video)
             .join(VideoDownload, isouter=True)
             .join(Channel)
-            .where(VideoDownload.format == None, Channel.status == ChannelStatus.ACCEPTED)
+            .where(VideoDownload.format is None, Channel.status == ChannelStatus.ACCEPTED)
             .first()
         )
-
-    @classmethod
-    def add(video) -> Video:
-        session.add(video)
-        session.commit()
-
-        return video
 
     def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime):
         self.thumbnail_url = thumbnail_url

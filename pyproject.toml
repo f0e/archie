@@ -6,9 +6,9 @@ authors = ["f0e <7321764+f0e@users.noreply.github.com>"]
 readme = "readme.md"
 repository = "https://github.com/f0e/archie"
 classifiers = [
-    "Topic :: System :: Archiving",
-    "Topic :: System :: Archiving :: Backup",
-    "Topic :: Multimedia :: Video",
+  "Topic :: System :: Archiving",
+  "Topic :: System :: Archiving :: Backup",
+  "Topic :: Multimedia :: Video",
 ]
 
 [tool.poetry.dependencies]
@@ -21,27 +21,15 @@ dacite = "^1.8.1"
 pydantic = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.7.0"
-isort = "^5.12.0"
-pre-commit = "^3.4.0"
+types-requests = "^2.31.0.2"
 
 [tool.poetry.scripts]
 archie = 'archie.cli:archie'
 
-[tool.poe.tasks.format-isort]
-help = "Run isort on the code base"
-cmd = "isort ."
-
-[tool.poe.tasks.format-black]
-help = "Run black on the code base"
-cmd = "black ."
-
-[tool.poe.tasks.format]
-help = "Run formating tools on the code base"
-sequence = ["format-isort", "format-black"]
-
-
 [tool.black]
+line-length = 160
+
+[tool.ruff]
 line-length = 160
 
 [tool.isort]
