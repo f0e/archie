@@ -2,9 +2,9 @@ import threading
 import time
 import os
 
-from database.database import Video
-from sources import youtube, wayback
-from utils.config import settings
+from ..sources import youtube, wayback
+from ..database.database import Video
+from ..utils.config import settings
 
 
 def log(*args, **kwargs):

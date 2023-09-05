@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 import yt_dlp
 
-from database.database import Channel, ChannelStatus, Video, VideoComment
+from ..database.database import Channel, ChannelStatus, Video, VideoComment
 from . import filter
 
 

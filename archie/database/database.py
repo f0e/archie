@@ -2,10 +2,13 @@ from __future__ import annotations
 import typing
 import sqlalchemy as sa
 from sqlalchemy import orm
-from utils import utils
-
 from datetime import datetime
 import enum
+from contextlib import contextmanager
+
+from ..utils import utils
+
+from .. import ARCHIE_PATH
 
 
 def log(*args, **kwargs):
@@ -13,7 +16,8 @@ def log(*args, **kwargs):
 
 
 # TODO: handle this shit in main
-db = sa.create_engine('sqlite:///archive.db')
+db_path = ARCHIE_PATH / "archie.db"
+db = sa.create_engine(f"sqlite:///{db_path}")
 Session = orm.sessionmaker(bind=db)
 session = Session()
 
@@ -351,3 +355,11 @@ def connect():
 
 def close():
     db.dispose()
+
+@contextmanager
+def database_connection():
+    try:
+        connect()
+        yield
+    finally:
+        close()

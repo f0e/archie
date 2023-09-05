@@ -1,2 +1,32 @@
-[tool.autopep8]
-max_line_length = 180
+[tool.poetry]
+name = "archie"
+version = "0.1.0"
+description = ""
+authors = ["f0e <7321764+f0e@users.noreply.github.com>"]
+readme = "readme.md"
+repository = "https://github.com/f0e/archie"
+classifiers = [
+    "Topic :: System :: Archiving",
+    "Topic :: System :: Archiving :: Backup",
+    "Topic :: Multimedia :: Video",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^8.1.7"
+yt-dlp = "^2023.7.6"
+sqlalchemy = "^2.0.20"
+requests = "^2.31.0"
+dacite = "^1.8.1"
+pydantic = "^2.3.0"
+
+[tool.poetry.scripts]
+archie = 'archie.cli:archie'
+
+[tool.black]
+line-length = 180
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

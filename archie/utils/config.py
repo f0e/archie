@@ -1,19 +1,20 @@
 import json
 
 from pathlib import Path
-import os
 
 from dacite import from_dict
 
 from pydantic import TypeAdapter
 from pydantic.dataclasses import dataclass
 
-CFG_PATH = Path('config.json')
+from .. import ARCHIE_PATH
+
+CFG_PATH = ARCHIE_PATH / "config.json"
 
 
 @dataclass
-class Config():
-    archie_path: str = os.path.join(Path.home(), "archie")
+class Config:
+    download_path: str = str(ARCHIE_PATH / "downloads")
 
     min_subscribers: int = 0
     max_subscribers: int = 30000
@@ -32,7 +33,7 @@ class Config():
 
 
 def save_cfg(cfg: Config):
-    with CFG_PATH.open('w') as f:
+    with CFG_PATH.open("w") as f:
         json.dump(cfg.to_json(), f, indent=2)
 
 
@@ -40,7 +41,7 @@ def load_cfg():
     if not CFG_PATH.exists() or CFG_PATH.stat().st_size == 0:
         save_cfg(Config())
 
-    with CFG_PATH.open('r') as f:
+    with CFG_PATH.open("r") as f:
         return from_dict(data_class=Config, data=json.load(f))
 
 

@@ -1,4 +1,4 @@
-from utils.config import settings
+from ..utils.config import settings
 
 
 def filter_channel(subscribers: int, verified: bool, num_videos: int):
