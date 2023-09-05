@@ -1,11 +1,10 @@
 import json
-
-from pathlib import Path
 import os
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-CFG_PATH = Path('config.json')
+CFG_PATH = Path("config.json")
 
 
 class Config(BaseModel):
@@ -30,31 +29,31 @@ class Config(BaseModel):
     def patch_keys(self, cfg_file: Path):
         data = self.to_json()
 
-        with cfg_file.open('r+') as f:
+        with cfg_file.open("r+") as f:
             cfg_data = json.load(f)
 
             for key in data.keys():
                 value = data[key]
 
                 if key not in cfg_data:
-                    print(f'missing {key}')
+                    print(f"missing {key}")
 
                     cfg_data[key] = value
                     save_cfg(cfg_data)
 
 
 def save_cfg(data):
-    with CFG_PATH.open('w') as f:
+    with CFG_PATH.open("w") as f:
         json.dump(data, f, indent=2)
 
 
-def load_cfg():
+def load_cfg() -> Config:
     if not CFG_PATH.exists() or CFG_PATH.stat().st_size == 0:
         save_cfg(Config().to_json())
 
-    with CFG_PATH.open('r') as f:
+    with CFG_PATH.open("r") as f:
         return Config().model_validate_json(f.read())
 
 
-settings = load_cfg()
+settings: Config = load_cfg()
 settings.patch_keys(CFG_PATH)
