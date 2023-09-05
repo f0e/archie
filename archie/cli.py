@@ -1,8 +1,7 @@
 import click
 
 from .database.database import database_connection
-from .downloader import downloader
-from . import parse
+from .tasks import downloader, parser
 
 
 @click.group()
@@ -30,7 +29,7 @@ def watch():
 
 def main_loop():
     with database_connection():
-        parse.init()
-        parse.parse_accepted_channels()
+        parser.init()
+        parser.parse_accepted_channels()
 
         downloader.run()

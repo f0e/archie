@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 
-from .database.database import Channel, ChannelStatus
-from .sources import youtube
-from .utils.config import settings
+from ..database.database import Channel, ChannelStatus
+from ..sources import youtube
+from ..utils.config import settings
 
 
 def log(*args, **kwargs):

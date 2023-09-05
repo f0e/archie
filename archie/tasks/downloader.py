@@ -1,6 +1,5 @@
 import threading
 import time
-import os
 
 from ..sources import youtube, wayback
 from ..database.database import Video
@@ -24,8 +23,7 @@ def download_videos():
             time.sleep(5000)
             break
 
-        download_path = os.path.join(settings.archie_path, f"downloads")
-        download_data = youtube.download_video(video, download_path)
+        download_data = youtube.download_video(video, settings.download_path)
 
         video.add_download(download_data["path"], download_data["format"])
 

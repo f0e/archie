@@ -1,8 +1,6 @@
 import json
 from datetime import datetime
-from typing import Dict
 from pathlib import Path
-import os
 import yt_dlp
 
 from ..database.database import Channel, ChannelStatus, Video, VideoComment
@@ -188,7 +186,7 @@ def download_video(video: Video, download_folder: Path):
             },
         ],
         # output folder
-        "outtmpl": os.path.join(download_folder, "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
+        "outtmpl": str(Path(download_folder) / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
