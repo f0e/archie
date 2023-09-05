@@ -53,7 +53,7 @@ def load_cfg():
         save_cfg(Config().to_json())
 
     with CFG_PATH.open('r') as f:
-        return Config().model_construct(f.read())
+        return Config().model_validate_json(f.read())
 
 
 settings = load_cfg()
