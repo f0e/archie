@@ -111,7 +111,7 @@ class Channel(Base):
         return (
             session.query(Channel)
             .filter(Channel.status == status)
-            .filter((Channel.update_time is None) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)
+            .filter((Channel.update_time is None) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)  # type: ignore[operator]
             .first()
         )
 
