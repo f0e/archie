@@ -44,7 +44,7 @@ class ArchiveConfig(BaseModel):
     name: str
     channels: list[str]
 
-    filters: FilterOptions = FilterOptions()
+    # filters: FilterOptions = FilterOptions()
     updating: UpdateOptions = UpdateOptions()
     downloads: DownloadOptions = DownloadOptions()
     spider: SpiderOptions = SpiderOptions()
