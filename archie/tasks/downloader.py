@@ -1,4 +1,5 @@
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +14,7 @@ def log(*args, **kwargs):
 
 
 def check_downloads():
+    # remove deleted downloads
     for download in db.VideoDownload.get_downloads():
         path = Path(download.path)
 
@@ -20,19 +22,32 @@ def check_downloads():
             log(f"download for video {download.video.title} no longer exists, deleting from db")
             download.delete()
 
+    # reset downloading state
+    for video in db.Video.get_videos():
+        video.reset_downloading()
+
+
+download_counter = 0
+download_counter_lock = threading.Lock()
+downloads_sleeping = False
+
 
 def download_videos(config: Config):
-    sleeping = False
+    global download_counter, downloads_sleeping
 
     while True:
         video = db.Video.get_next_download()
         if not video:
-            if not sleeping:
-                log("downloaded all videos, sleeping...")
-                sleeping = True
+            with download_counter_lock:
+                if download_counter == 0:
+                    if not downloads_sleeping:
+                        downloads_sleeping = True
+                        log("downloaded all videos, sleeping...")
 
             time.sleep(1)
             continue
+
+        downloads_sleeping = False
 
         assert len(video.channel.archives) > 0  # todo: i know this will fail at some point i have to code the logic for it
 
@@ -49,7 +64,14 @@ def download_videos(config: Config):
         log(f"downloading video {video.title} ({video.id})")
 
         download_path = Path(archive_config.downloads.download_path).expanduser()
+
+        with download_counter_lock:
+            download_counter += 1
+
         download_data = youtube.download_video(video, download_path)
+
+        with download_counter_lock:
+            download_counter -= 1
 
         for other_config in config.archives[1:]:
             other_download_path = Path(other_config.downloads.download_path).expanduser()

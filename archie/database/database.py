@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import threading
 import typing
 from contextlib import contextmanager
 from datetime import datetime
@@ -25,6 +26,8 @@ session_factory = orm.sessionmaker(bind=db)
 Session = orm.scoped_session(session_factory)
 
 initialised = False
+
+download_lock = threading.Lock()
 
 ###
 # Channel
@@ -332,6 +335,7 @@ class Video(Base):
     timestamp: orm.Mapped[datetime | None]
 
     # archie data
+    downloading: orm.Mapped[bool] = orm.mapped_column(default=False)
     update_time: orm.Mapped[datetime | None]
 
     # relationships
@@ -344,15 +348,34 @@ class Video(Base):
 
     @staticmethod
     def get_next_download():
+        with download_lock:  # need to wait for other threads to set downloading=True
+            session = Session()
+
+            video = (
+                session.query(Video)
+                .where(Video.downloading == sa.false())
+                .join(VideoDownload, isouter=True)
+                .join(Channel)
+                .where(VideoDownload.format.is_(None), Channel.status == ChannelStatus.ACCEPTED)
+                .first()
+            )
+
+            if video:
+                video.downloading = True
+                session.commit()
+
+            return video
+
+    @staticmethod
+    def get_videos():
+        session = Session()
+        yield from session.query(Video)
+
+    def reset_downloading(self):
         session = Session()
 
-        return (
-            session.query(Video)
-            .join(VideoDownload, isouter=True)
-            .join(Channel)
-            .where(VideoDownload.format.is_(None), Channel.status == ChannelStatus.ACCEPTED)
-            .first()
-        )
+        self.downloading = False
+        session.commit()
 
     def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime):
         session = Session()
@@ -402,9 +425,11 @@ class Video(Base):
     def add_download(self, path: Path, format: str):
         session = Session()
 
-        download = VideoDownload(path=str(path), format=format)
+        self.downloading = False
 
+        download = VideoDownload(path=str(path), format=format)
         self.downloads.append(download)
+
         session.commit()
 
         return download
@@ -429,7 +454,6 @@ class VideoDownload(Base):
     @staticmethod
     def get_downloads():
         session = Session()
-
         yield from session.query(VideoDownload)
 
     def delete(self):

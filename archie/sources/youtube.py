@@ -1,10 +1,11 @@
 import json
-import shutil
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import yt_dlp  # type: ignore
+from colorama import Fore, Style
 
 import archie.config as cfg
 from archie import ARCHIE_PATH
@@ -198,6 +199,70 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
     return True
 
 
+class VideoProgress:
+    filename: str
+    tmpfilename: str
+    downloaded_bytes: int
+    total_bytes: int | None
+    total_bytes_estimate: int | None
+    elapsed: int
+    eta: int
+    speed: float
+    fragment_index: int | None
+    fragment_count: int | None
+
+    def __init__(self, data):
+        self.filename = data.get("filename")
+        self.tmpfilename = data.get("tmpfilename")
+        self.downloaded_bytes = data.get("downloaded_bytes")
+        self.total_bytes = data.get("total_bytes")
+        self.total_bytes_estimate = data.get("total_bytes_estimate")
+        self.elapsed = data.get("elapsed")
+        self.eta = data.get("eta")
+        self.speed = data.get("speed")
+        self.fragment_index = data.get("fragment_index")
+        self.fragment_count = data.get("fragment_count")
+
+
+downloads: dict[str, VideoProgress] = dict()
+total_speeds: list[int] = []
+process_lock = threading.Lock()
+
+
+def progress_hooks(data):
+    with process_lock:
+        match data["status"]:
+            case "finished":
+                video_id = data["info_dict"]["id"]
+                if video_id in downloads:
+                    del downloads[video_id]
+
+            case "downloading":
+                video_id = data["info_dict"]["id"]
+                downloads[video_id] = VideoProgress(data)
+
+        total_speed = 0
+
+        messages = []
+        for id, download in downloads.items():
+            percent = 0
+
+            if download.total_bytes:
+                percent = download.downloaded_bytes / download.total_bytes
+
+            messages.append(f"{Fore.LIGHTBLACK_EX}{id}:{Style.RESET_ALL} {percent*100:.2f}%")
+
+            if download.speed:
+                total_speed += download.speed
+
+        total_speeds.insert(0, total_speed)
+        del total_speeds[50:]
+
+        average_speed = sum(total_speeds) / len(total_speeds)
+
+        utils.print_progress(f"{len(downloads)} downloads ({average_speed/1000000:.2f} MB/s) " + ", ".join(messages))
+
+
 @dataclass
 class DownloadedVideo:
     path: Path
@@ -210,6 +275,7 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
     temp_dl_path = ARCHIE_PATH / "temp-downloads"
 
     ydl_opts = {
+        "progress_hooks": [progress_hooks],
         "quiet": True,
         "noprogress": True,
         # don't redownload videos
@@ -254,8 +320,8 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
             final_path.parent.mkdir(parents=True, exist_ok=True)
             downloaded_path.rename(final_path)
 
-        # delete temp folder
-        shutil.rmtree(temp_dl_path)
+        # # delete temp folder
+        # shutil.rmtree(temp_dl_path)
 
         return DownloadedVideo(
             path=final_path,

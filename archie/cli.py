@@ -2,6 +2,7 @@ import threading
 import time
 
 import click
+from colorama import Fore, Style
 
 import archie.database.database as db
 from archie.config import ArchiveConfig, Config, load_config
@@ -69,8 +70,8 @@ def create(name, channels):
 
     def print_error_and_examples(msg: str):
         click.echo(msg + " To create an archive, enter a name and a list of YouTube channel links or IDs after the create command.")
-        click.echo("e.g. " + click.style("archie create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma", fg="cyan"))
-        click.echo("or " + click.style("archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg", fg="cyan"))
+        click.echo(f"e.g. {Fore.LIGHTBLACK_EX}archie create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma{Style.RESET_ALL}")
+        click.echo(f"or {Fore.LIGHTBLACK_EX}archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg{Style.RESET_ALL}")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -88,7 +89,7 @@ def create(name, channels):
                 return click.echo("Cancelled archive creation.")
 
     click.echo(f"Created archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    click.echo("To run the archive, use " + click.style("archie run", fg="cyan"))
+    click.echo(f"To run the archive, use {Fore.LIGHTBLACK_EX}archie run{Style.RESET_ALL}")
 
 
 @archie.command()
@@ -101,8 +102,8 @@ def add(name, channels):
 
     def print_error_and_examples(msg: str):
         click.echo(msg + " To add channels to an archive, enter a name and a list of YouTube channel links or IDs after the add command.")
-        click.echo("e.g. " + click.style("archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma", fg="cyan"))
-        click.echo("or " + click.style("archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg", fg="cyan"))
+        click.echo(f"e.g. {Fore.LIGHTBLACK_EX}archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma{Style.RESET_ALL}")
+        click.echo(f"or {Fore.LIGHTBLACK_EX}archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg{Style.RESET_ALL}")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -120,7 +121,7 @@ def add(name, channels):
                 return click.echo("Cancelled archive creation.")
 
     click.echo(f"Added channels to archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    click.echo("To run the archive, use " + click.style("archie run", fg="cyan"))
+    click.echo(f"To run the archive, use {Fore.LIGHTBLACK_EX}archie run{Style.RESET_ALL}")
 
 
 @archie.command()
@@ -131,11 +132,13 @@ def run():
     with db.connect():
         with load_config() as config:
             if len(config.archives) == 0:
-                return click.echo("No archives created, create one using " + click.style("archie create [archive name] [channel(s)]", fg="cyan"))
+                return click.echo("No archives created, create one using {Fore.LIGHTBLACK_EX}create [archive name] [channel(s)]{Style.RESET_ALL}")
 
             downloader.check_downloads()
 
-            threading.Thread(target=downloader.download_videos, args=(config,), daemon=True).start()
+            for i in range(5):
+                threading.Thread(target=downloader.download_videos, args=(config,), daemon=True).start()
+
             threading.Thread(target=parser.parse, args=(config,), daemon=True).start()
 
             while True:
