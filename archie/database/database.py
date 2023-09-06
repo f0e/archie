@@ -115,12 +115,10 @@ class Archive(Base):
 class ArchiveChannel(Base):
     __tablename__ = "archive_channels"
 
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
+    archive_id = orm.mapped_column(sa.ForeignKey("archive.id"), primary_key=True)
+    channel_id = orm.mapped_column(sa.ForeignKey("channel.id"), primary_key=True)
 
     from_spider: orm.Mapped[bool]
-
-    archive_id = orm.mapped_column(sa.ForeignKey("archive.id"))
-    channel_id = orm.mapped_column(sa.ForeignKey("channel.id"))
 
 
 class Person(Base):
