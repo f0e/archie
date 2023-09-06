@@ -111,7 +111,7 @@ class Channel(Base):
         return (
             session.query(Channel)
             .filter(Channel.status == status)
-            .filter((Channel.update_time is None) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)  # type: ignore[operator]
+            .filter((Channel.update_time.is_(None)) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)
             .first()
         )
 
@@ -267,7 +267,7 @@ class Video(Base):
             session.query(Video)
             .join(VideoDownload, isouter=True)
             .join(Channel)
-            .where(VideoDownload.format is None, Channel.status == ChannelStatus.ACCEPTED)
+            .where(VideoDownload.format.is_(None), Channel.status == ChannelStatus.ACCEPTED)
             .first()
         )
 
