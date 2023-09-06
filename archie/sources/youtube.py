@@ -1,5 +1,6 @@
 import json
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -90,7 +91,11 @@ def parse_channel(channel_link: str, archive_config: archie.ArchiveConfig, statu
 
         if from_spider:
             if filter.filter_spider_channel(archive_config.spider.filters, subscribers, verified, num_videos):
-                # todo: what to do when the channel's already been added
+                # todo: what to do when the channel's already been added?
+                # todo: store filtered channels in db so they don't get checked again? and it'll also store their
+                #       info in case you change your mind on filter settings?
+                # todo: go back to parsing /about for filtering???
+                log("filtered channel")
                 return None
 
         channel = archive.add_channel(
@@ -193,7 +198,13 @@ def parse_video_details(video: Video, archive_config: archie.ArchiveConfig):
     return True
 
 
-def download_video(video: Video, download_folder: Path):
+@dataclass
+class DownloadedVideo:
+    path: Path
+    format: str
+
+
+def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
     # returns the downloaded format
 
     temp_dl_path = ARCHIE_PATH / "temp-downloads"
@@ -222,7 +233,7 @@ def download_video(video: Video, download_folder: Path):
             },
         ],
         # output folder
-        "outtmpl": str(temp_dl_path / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
+        "outtmpl": str(temp_dl_path.expanduser() / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
@@ -248,4 +259,7 @@ def download_video(video: Video, download_folder: Path):
         # delete temp folder
         shutil.rmtree(temp_dl_path)
 
-        return {"path": final_path, "format": download_data["format_id"]}
+        return DownloadedVideo(
+            path=final_path,
+            format=download_data["format_id"],
+        )

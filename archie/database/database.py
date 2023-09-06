@@ -21,8 +21,8 @@ def log(*args, **kwargs):
 db_path = ARCHIE_PATH / "archie.db"
 db = sa.create_engine(f"sqlite:///{db_path}")
 
-Session = orm.sessionmaker(bind=db)
-session = Session()
+session_factory = orm.sessionmaker(bind=db)
+Session = orm.scoped_session(session_factory)
 
 initialised = False
 
@@ -71,6 +71,8 @@ class Archive(Base):
 
     @staticmethod
     def get(name: str):
+        session = Session()
+
         archive = session.query(Archive).filter(Archive.name == name).first()
 
         # create the archive if it doesn't exist yet
@@ -82,6 +84,8 @@ class Archive(Base):
         return archive
 
     def add_channel(self, channel: Channel, from_spider: bool):
+        session = Session()
+
         if channel in self.channels:
             return channel
 
@@ -91,6 +95,8 @@ class Archive(Base):
         return channel
 
     def get_next_of_status(self, status: ChannelStatus, updated_before: datetime | None = None):
+        session = Session()
+
         return (
             session.query(Channel)
             .filter(Channel.archives.any(id=self.id))
@@ -163,13 +169,15 @@ class Channel(Base):
     person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
     person: orm.Mapped[Person | None] = orm.relationship(back_populates="channels")
 
-    archives: orm.Mapped[list[Channel]] = orm.relationship("Archive", secondary="archive_channels", back_populates="channels")
+    archives: orm.Mapped[list[Archive]] = orm.relationship("Archive", secondary="archive_channels", back_populates="channels")
 
     # indexes
     __table_args__ = (sa.Index("idx_status", "status"),)
 
     @staticmethod
     def get(id: str, fully_parsed: bool):
+        session = Session()
+
         builder = session.query(Channel).filter(Channel.id == id)
 
         if fully_parsed:
@@ -190,6 +198,8 @@ class Channel(Base):
         tags_list: list[str],
         verified: bool,
     ) -> Channel:
+        session = Session()
+
         tags = ",".join(tags_list)
 
         existing_channel = session.query(Channel).filter_by(id=id).first()
@@ -238,7 +248,18 @@ class Channel(Base):
 
         return new_channel
 
-    def add_or_update_video(self, id: str, title: str, thumbnail_url: str, description: str, duration: float, availability: str, views: int) -> Video:
+    def add_or_update_video(
+        self,
+        id: str,
+        title: str,
+        thumbnail_url: str,
+        description: str,
+        duration: float,
+        availability: str,
+        views: int,
+    ) -> Video:
+        session = Session()
+
         existing_video = utils.find(self.videos, lambda x: x.id == id)
         new_video = existing_video or Video()
 
@@ -259,11 +280,15 @@ class Channel(Base):
         return new_video
 
     def set_updated(self):
+        session = Session()
+
         self.update_time = datetime.utcnow()
         self.update_status = self.status
         session.commit()
 
     def set_status(self, status: ChannelStatus):
+        session = Session()
+
         self.status = status
         session.commit()
 
@@ -321,6 +346,8 @@ class Video(Base):
 
     @staticmethod
     def get_next_download():
+        session = Session()
+
         return (
             session.query(Video)
             .join(VideoDownload, isouter=True)
@@ -330,6 +357,8 @@ class Video(Base):
         )
 
     def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime):
+        session = Session()
+
         self.thumbnail_url = thumbnail_url
         self.availability = availability
         self.categories = ",".join(categories_list)
@@ -339,8 +368,18 @@ class Video(Base):
         session.commit()
 
     def add_comment(
-        self, id: str, parent_id: str | None, channel_id: str, text: str, likes: int, channel_avatar_url: str, timestamp: datetime, favorited: bool
+        self,
+        id: str,
+        parent_id: str | None,
+        channel_id: str,
+        text: str,
+        likes: int,
+        channel_avatar_url: str,
+        timestamp: datetime,
+        favorited: bool,
     ):
+        session = Session()
+
         existing_comment = utils.find(self.comments, lambda x: x.id == id)
         new_comment = existing_comment or VideoComment()
 
@@ -363,6 +402,8 @@ class Video(Base):
         return new_comment
 
     def add_download(self, path: Path, format: str):
+        session = Session()
+
         download = VideoDownload(path=str(path), format=format)
 
         self.downloads.append(download)
@@ -386,6 +427,18 @@ class VideoDownload(Base):
 
     format: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     path: orm.Mapped[str]
+
+    @staticmethod
+    def get_downloads():
+        session = Session()
+
+        yield from session.query(VideoDownload)
+
+    def delete(self):
+        session = Session()
+
+        session.delete(self)
+        session.commit()
 
 
 ###
@@ -419,24 +472,25 @@ class VideoComment(Base):
     parent: orm.Mapped[VideoComment | None] = orm.relationship(back_populates="replies")
 
 
-def connect():
+def initialise():
     global initialised
+    if initialised:
+        return
 
     Base.metadata.create_all(db)
     initialised = True
 
 
-def close():
+def detach():
     global initialised
-
     db.dispose()
     initialised = False
 
 
 @contextmanager
-def database_connection():
+def connect():
     try:
-        connect()
+        initialise()
         yield
     finally:
-        close()
+        detach()
