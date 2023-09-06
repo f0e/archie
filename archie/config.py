@@ -84,6 +84,10 @@ def load_config():
 
         config = Config.load()
 
+        # config might be missing or have extra variables, save after validating
+        # todo: i know if you just created a config for the first time this will save pointlessly but idc
+        config.save()
+
         yield config
     finally:
         pass
