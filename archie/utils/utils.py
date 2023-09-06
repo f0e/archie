@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 import click
 import requests
+import yaml
 
 print_lock = threading.RLock()  # rlock - same thread can acquire multiple times, other threads have to wait
 
@@ -35,3 +36,8 @@ def download_image(url):
     else:
         click.echo(f"Failed to download image from URL: {url}")
         return None
+
+
+class PrettyDumper(yaml.Dumper):
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow, False)

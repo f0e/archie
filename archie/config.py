@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from archie import ARCHIE_PATH
 from archie.database import database as db
-from archie.utils.pretty_yaml import PrettyDumper
+from archie.utils.utils import PrettyDumper
 
 CFG_PATH = ARCHIE_PATH / "config.yaml"  # fixed for now, if that changes add in a unique column to the archive table and handle that properly
 
