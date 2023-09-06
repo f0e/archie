@@ -4,23 +4,27 @@ import enum
 import typing
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from .. import ARCHIE_PATH
-from ..utils import utils
+from archie import ARCHIE_PATH
+from archie.utils import utils
 
 
 def log(*args, **kwargs):
-    print("[db] " + " ".join(map(str, args)), **kwargs)
+    utils.safe_log("db", "white", *args, **kwargs)
 
 
 # TODO: handle this shit in main
 db_path = ARCHIE_PATH / "archie.db"
 db = sa.create_engine(f"sqlite:///{db_path}")
+
 Session = orm.sessionmaker(bind=db)
 session = Session()
+
+initialised = False
 
 ###
 # Channel
@@ -55,6 +59,62 @@ class ChannelStatus(enum.Enum):
     QUEUED = 0
     ACCEPTED = 1
     REJECTED = 2
+
+
+class Archive(Base):
+    __tablename__ = "archive"
+
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
+    name: orm.Mapped[str]
+
+    channels: orm.Mapped[list[Channel]] = orm.relationship("Channel", secondary="archive_channels", back_populates="archives")
+
+    @staticmethod
+    def get(name: str):
+        archive = session.query(Archive).filter(Archive.name == name).first()
+
+        # create the archive if it doesn't exist yet
+        if not archive:
+            archive = Archive(name=name)
+            session.add(archive)
+            session.commit()
+
+        return archive
+
+    def add_channel(self, channel: Channel, from_spider: bool):
+        if channel in self.channels:
+            return channel
+
+        session.add(ArchiveChannel(archive_id=self.id, channel_id=channel.id, from_spider=from_spider))
+        session.commit()
+
+        return channel
+
+    def get_next_of_status(self, status: ChannelStatus, updated_before: datetime | None = None):
+        return (
+            session.query(Channel)
+            .filter(Channel.archives.any(id=self.id))
+            .filter(Channel.status == status)
+            .filter(
+                sa.or_(
+                    Channel.update_time.is_(None),
+                    Channel.update_status != Channel.status,
+                    Channel.update_time <= updated_before,
+                )
+            )
+            .first()
+        )
+
+
+class ArchiveChannel(Base):
+    __tablename__ = "archive_channels"
+
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
+
+    from_spider: orm.Mapped[bool]
+
+    archive_id = orm.mapped_column(sa.ForeignKey("archive.id"))
+    channel_id = orm.mapped_column(sa.ForeignKey("channel.id"))
 
 
 class Person(Base):
@@ -103,21 +163,19 @@ class Channel(Base):
     person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
     person: orm.Mapped[Person | None] = orm.relationship(back_populates="channels")
 
+    archives: orm.Mapped[list[Channel]] = orm.relationship("Archive", secondary="archive_channels", back_populates="channels")
+
     # indexes
     __table_args__ = (sa.Index("idx_status", "status"),)
 
     @staticmethod
-    def get_next_of_status(status: ChannelStatus, updated_before: datetime | None = None):
-        return (
-            session.query(Channel)
-            .filter(Channel.status == status)
-            .filter((Channel.update_time.is_(None)) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)
-            .first()
-        )
+    def get(id: str, fully_parsed: bool):
+        builder = session.query(Channel).filter(Channel.id == id)
 
-    @staticmethod
-    def get(id: str):
-        return session.query(Channel).filter_by(id=id).first()
+        if fully_parsed:
+            builder = builder.filter(Channel.update_time.is_not(None))
+
+        return builder.first()
 
     @classmethod
     def create_or_update(
@@ -304,8 +362,8 @@ class Video(Base):
 
         return new_comment
 
-    def add_download(self, path: str, format: str):
-        download = VideoDownload(path=path, format=format)
+    def add_download(self, path: Path, format: str):
+        download = VideoDownload(path=str(path), format=format)
 
         self.downloads.append(download)
         session.commit()
@@ -362,11 +420,17 @@ class VideoComment(Base):
 
 
 def connect():
+    global initialised
+
     Base.metadata.create_all(db)
+    initialised = True
 
 
 def close():
+    global initialised
+
     db.dispose()
+    initialised = False
 
 
 @contextmanager

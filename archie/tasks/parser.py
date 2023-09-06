@@ -1,41 +1,49 @@
+import time
 from datetime import datetime, timedelta
 
-from ..database.database import Channel, ChannelStatus
-from ..sources import youtube
-from ..utils.config import settings
+import archie.database.database as db
+from archie.archie import Config
+from archie.sources import youtube
+from archie.utils import utils
 
 
 def log(*args, **kwargs):
-    print("[parse] " + " ".join(map(str, args)), **kwargs)
+    utils.safe_log("parse", "green", *args, **kwargs)
 
 
-def parse_accepted_channels():
-    # goes through accepted channels videos
+def parse(config: Config):
+    sleeping = False
+
     while True:
-        channel = Channel.get_next_of_status(ChannelStatus.ACCEPTED, datetime.utcnow() - timedelta(hours=settings.channel_update_gap_hours))
-        if not channel:
-            break
+        for archive_config in config.archives:
+            archive = db.Archive.get(archive_config.name)
 
-        log(f"updating channel {channel.name} ({channel.id})")
-        youtube.update_channel(channel)
+            # parse all manually added channels
+            for channel_id in archive_config.channels:
+                channel = db.Channel.get(channel_id, True)
+                if channel:
+                    if channel not in archive.channels:
+                        # channel already added in another archive
+                        archive.add_channel(channel, False)
 
-        video_min_update_time = datetime.utcnow() - timedelta(hours=settings.video_update_gap_hours)
-
-        for video in channel.videos:
-            if video.fully_parsed:
-                if video.update_time > video_min_update_time:
                     continue
 
-            youtube.parse_video_details(video)
+                youtube.parse_channel("channel/" + channel_id, archive_config, db.ChannelStatus.ACCEPTED)
 
-        log(f"finished parsing {channel.name} ({channel.id})")
+            # parse all accepted channels (spider or db editing)
+            while True:
+                before_time = datetime.utcnow() - timedelta(hours=archive_config.updating.channel_update_gap_hours)
+                channel = archive.get_next_of_status(db.ChannelStatus.ACCEPTED, before_time)
+                if not channel:
+                    break
 
-    log("finished parsing accepted channels")
+                log(f"updating channel {channel.name} ({channel.id})")
+                youtube.update_channel(channel, archive_config)
 
+                log(f"finished parsing {channel.name} ({channel.id})")
 
-def init():
-    START_CHANNEL = "UC3V9Tsy08G41oXr6TIg9xIw"
-    if Channel.get(START_CHANNEL):
-        return
+            if not sleeping:
+                log("finished parsing accepted channels, sleeping...")
+                sleeping = True
 
-    youtube.parse_channel("channel/" + START_CHANNEL, ChannelStatus.ACCEPTED)
+            time.sleep(1)

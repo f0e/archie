@@ -1,8 +1,5 @@
 # archie
-config.json
-archive.db
-
-*.json
+downloads-TEMP
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

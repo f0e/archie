@@ -1,15 +1,24 @@
 import json
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yt_dlp  # type: ignore
 
-from ..database.database import Channel, ChannelStatus, Video
-from . import filter
+import archie.archie as archie
+from archie import ARCHIE_PATH
+from archie.database.database import Archive, Channel, ChannelStatus, Video
+from archie.sources import filter
+from archie.utils import utils
+
+in_spider = False
 
 
 def log(*args, **kwargs):
-    print("[youtube] " + " ".join(map(str, args)), **kwargs)
+    if not in_spider:
+        utils.safe_log("youtube", "red", *args, **kwargs)
+    else:
+        utils.safe_log("youtube (spider)", "magenta", *args, **kwargs)
 
 
 def debug_write(yt, data, filename):
@@ -17,29 +26,44 @@ def debug_write(yt, data, filename):
         out_file.write(json.dumps(yt.sanitize_info(data)))
 
 
-def update_channel(channel: Channel) -> Channel | None:
-    return parse_channel("channel/" + channel.id, channel.status)
+def get_data(channelLink: str):
+    ydl_opts = {
+        "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
+        "quiet": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        return yt.extract_info(channelLink, download=False, process=False)
 
 
-def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
+def update_channel(channel: Channel, archive: archie.ArchiveConfig) -> Channel | None:
+    return parse_channel("channel/" + channel.id, archive, channel.status)
+
+
+def parse_channel(channel_link: str, archive_config: archie.ArchiveConfig, status: ChannelStatus, from_spider: bool = False) -> Channel | None:
     # adds a channel to the database. will filter out unwanted channels.
 
-    ydl_opts = {"extract_flat": True, "quiet": True}  # don't parse individual videos, just get the data available from the /videos page
+    ydl_opts = {
+        "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
+        "quiet": True,
+    }
 
-    log(f"parsing channel {channelLink}")
+    log(f"parsing channel {channel_link}")
+
+    archive = Archive.get(archive_config.name)
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         try:
-            data = yt.extract_info(f"https://www.youtube.com/{channelLink}/videos", download=False)
+            data = yt.extract_info(f"https://www.youtube.com/{channel_link}/videos", download=False)
         except yt_dlp.utils.DownloadError as e:
             if "This channel does not have a videos tab" in e.msg:
-                log(f"channel has no videos, fetching about page instead ({channelLink})")
+                log(f"channel has no videos, fetching about page instead ({channel_link})")
             else:
-                log(f"misc parsing error, skipping parsing ({channelLink})")
+                log(f"misc parsing error, skipping parsing ({channel_link})")
                 return None
 
             try:
-                data = yt.extract_info(f"https://www.youtube.com/{channelLink}/about", download=False)
+                data = yt.extract_info(f"https://www.youtube.com/{channel_link}/about", download=False)
             except yt_dlp.utils.DownloadError as e:
                 if "This channel does not have a about tab" in e.msg:
                     log("channel doesn't have an about page? skipping")
@@ -64,27 +88,29 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
 
         num_videos = len(data["entries"])
 
-        if filter.filter_channel(subscribers, verified, num_videos):
-            # todo: what to do when the channel's already been added
-            return None
+        if from_spider:
+            if filter.filter_spider_channel(archive_config.spider.filters, subscribers, verified, num_videos):
+                # todo: what to do when the channel's already been added
+                return None
 
-        channel = Channel.create_or_update(
-            status=status,
-            id=data["channel_id"],
-            name=data["channel"],
-            avatar_url=avatar_url,
-            banner_url=banner_url,
-            description=data["description"],
-            subscribers=subscribers,
-            tags_list=data["tags"],
-            verified=verified,
+        channel = archive.add_channel(
+            Channel.create_or_update(
+                status=status,
+                id=data["channel_id"],
+                name=data["channel"],
+                avatar_url=avatar_url,
+                banner_url=banner_url,
+                description=data["description"],
+                subscribers=subscribers,
+                tags_list=data["tags"],
+                verified=verified,
+            ),
+            from_spider,
         )
 
         log(f"parsed channel {channel.name} ({channel.id})")
 
         for entry in data["entries"]:
-            debug_write(yt, entry, "zz-entry")
-
             video = channel.add_or_update_video(
                 id=entry["id"],
                 title=entry["title"],
@@ -96,9 +122,9 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
             )
 
             if channel.status == ChannelStatus.ACCEPTED:
-                if not video.fully_parsed:
-                    # video hasn't been parsed yet
-                    parse_video_details(video)
+                video_min_update_time = datetime.utcnow() - timedelta(hours=archive_config.updating.video_update_gap_hours)
+                if not video.fully_parsed or video.update_time <= video_min_update_time:
+                    parse_video_details(video, archive_config)
 
         log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
 
@@ -107,10 +133,13 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
     return channel
 
 
-def parse_video_details(video: Video):
+def parse_video_details(video: Video, archive_config: archie.ArchiveConfig):
     # gets all info and commenters for a video
 
-    ydl_opts = {"getcomments": True, "quiet": True}
+    ydl_opts = {
+        "getcomments": True,
+        "quiet": True,
+    }
 
     log(f"parsing video {video.title} by {video.channel.name} ({video.id})")
 
@@ -150,8 +179,12 @@ def parse_video_details(video: Video):
                 if comment.channel:
                     continue
 
-                # new channel, add to queue
-                parse_channel("channel/" + comment.channel_id, ChannelStatus.QUEUED)
+                if archive_config.spider.enabled:
+                    # new channel, add to queue
+                    global in_spider
+                    in_spider = True
+                    parse_channel("channel/" + comment.channel_id, archive_config, ChannelStatus.QUEUED, from_spider=True)
+                    in_spider = False
 
         video.set_updated()
 
@@ -162,6 +195,8 @@ def parse_video_details(video: Video):
 
 def download_video(video: Video, download_folder: Path):
     # returns the downloaded format
+
+    temp_dl_path = ARCHIE_PATH / "temp-downloads"
 
     ydl_opts = {
         "quiet": True,
@@ -187,7 +222,7 @@ def download_video(video: Video, download_folder: Path):
             },
         ],
         # output folder
-        "outtmpl": str(Path(download_folder) / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
+        "outtmpl": str(temp_dl_path / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
@@ -196,4 +231,21 @@ def download_video(video: Video, download_folder: Path):
         data = yt.extract_info(f"https://www.youtube.com/watch?v={video.id}", download=True)
         download_data = data["requested_downloads"][0]
 
-        return {"path": download_data["filepath"], "format": download_data["format_id"]}
+        # get just the download path, not the stuff before it. so c:\...\temp-downloads\channel\video.mkv just becomes channel\video.mkv
+        downloaded_path = Path(download_data["filepath"])
+        relative_path = downloaded_path.relative_to(temp_dl_path)
+
+        # build proper download path
+        final_path = download_folder / relative_path
+
+        if final_path.exists():
+            log("video already exists? skipping")
+        else:
+            # move completed download
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            downloaded_path.rename(final_path)
+
+        # delete temp folder
+        shutil.rmtree(temp_dl_path)
+
+        return {"path": final_path, "format": download_data["format_id"]}
