@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yt_dlp  # type: ignore
 
-import archie.archie as archie
+import archie.config as cfg
 from archie import ARCHIE_PATH
 from archie.database.database import Archive, Channel, ChannelStatus, Video
 from archie.sources import filter
@@ -37,11 +37,11 @@ def get_data(channelLink: str):
         return yt.extract_info(channelLink, download=False, process=False)
 
 
-def update_channel(channel: Channel, archive: archie.ArchiveConfig) -> Channel | None:
+def update_channel(channel: Channel, archive: cfg.ArchiveConfig) -> Channel | None:
     return parse_channel("channel/" + channel.id, archive, channel.status)
 
 
-def parse_channel(channel_link: str, archive_config: archie.ArchiveConfig, status: ChannelStatus, from_spider: bool = False) -> Channel | None:
+def parse_channel(channel_link: str, archive_config: cfg.ArchiveConfig, status: ChannelStatus, from_spider: bool = False) -> Channel | None:
     # adds a channel to the database. will filter out unwanted channels.
 
     ydl_opts = {
@@ -138,7 +138,7 @@ def parse_channel(channel_link: str, archive_config: archie.ArchiveConfig, statu
     return channel
 
 
-def parse_video_details(video: Video, archive_config: archie.ArchiveConfig):
+def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
     # gets all info and commenters for a video
 
     ydl_opts = {
@@ -237,8 +237,6 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        log(f"downloading video {video.title} ({video.id})")
-
         data = yt.extract_info(f"https://www.youtube.com/watch?v={video.id}", download=True)
         download_data = data["requested_downloads"][0]
 

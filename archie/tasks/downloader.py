@@ -5,7 +5,7 @@ from pathlib import Path
 import archie.database.database as db
 import archie.sources.youtube as youtube
 import archie.utils.utils as utils
-from archie.archie import Config
+from archie.config import Config
 
 
 def log(*args, **kwargs):
@@ -45,6 +45,8 @@ def download_videos(config: Config):
                 break
 
         assert archive_config
+
+        log(f"downloading video {video.title} ({video.id})")
 
         download_path = Path(archive_config.downloads.download_path).expanduser()
         download_data = youtube.download_video(video, download_path)

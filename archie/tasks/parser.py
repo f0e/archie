@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timedelta
 
 import archie.database.database as db
-from archie.archie import Config
+from archie.config import Config
 from archie.sources import youtube
 from archie.utils import utils
 

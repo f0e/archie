@@ -1,7 +1,7 @@
-import archie.archie as archie
+import archie.config as cfg
 
 
-def filter_spider_channel(filters: archie.SpiderFilterOptions, subscribers: int, verified: bool, num_videos: int):
+def filter_spider_channel(filters: cfg.SpiderFilterOptions, subscribers: int, verified: bool, num_videos: int):
     if subscribers > filters.max_subscribers or subscribers < filters.min_subscribers:
         return True
 

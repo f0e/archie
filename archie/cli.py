@@ -3,8 +3,8 @@ import time
 
 import click
 
-import archie.archie as arch
 import archie.database.database as db
+from archie.config import ArchiveConfig, Config, load_config
 from archie.sources import youtube
 from archie.tasks import downloader, parser
 from archie.utils import utils
@@ -16,7 +16,7 @@ def archie():
     pass
 
 
-def add_channels_to_archive(config: arch.Config, name: str, channels: list[str]) -> bool:
+def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> bool:
     # check if name is a link
     if validate_url(name):
         if not click.prompt("Archive name is a URL, are you sure you want to continue? (y/n)", type=bool):
@@ -52,7 +52,7 @@ def add_channels_to_archive(config: arch.Config, name: str, channels: list[str])
         archive.channels = archive.channels + channel_ids
     else:
         # create new archive
-        config.archives.append(arch.ArchiveConfig(name=name, channels=channel_ids))
+        config.archives.append(ArchiveConfig(name=name, channels=channel_ids))
 
     config.save()
 
@@ -79,7 +79,7 @@ def create(name, channels):
         return print_error_and_examples("No channels provided.")
 
     with db.connect():
-        with arch.load_config() as config:
+        with load_config() as config:
             # check if name is duplicate
             if any(archive.name == name for archive in config.archives):
                 return click.echo(f"An archive already exists with the name '{name}'.")
@@ -87,7 +87,7 @@ def create(name, channels):
             if not add_channels_to_archive(config, name, channels):
                 return click.echo("Cancelled archive creation.")
 
-    click.echo(f"Created archive '{name}'. You can edit the archive settings at {arch.CFG_PATH}.")
+    click.echo(f"Created archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
     click.echo("To run the archive, use " + click.style("archie run", fg="cyan"))
 
 
@@ -111,7 +111,7 @@ def add(name, channels):
         return print_error_and_examples("No channels provided.")
 
     with db.connect():
-        with arch.load_config() as config:
+        with load_config() as config:
             # check if name is not duplicate
             if not any(archive.name == name for archive in config.archives):
                 return click.echo(f"Archive '{name}' not found.")
@@ -119,7 +119,7 @@ def add(name, channels):
             if not add_channels_to_archive(config, name, channels):
                 return click.echo("Cancelled archive creation.")
 
-    click.echo(f"Added channels to archive '{name}'. You can edit the archive settings at {arch.CFG_PATH}.")
+    click.echo(f"Added channels to archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
     click.echo("To run the archive, use " + click.style("archie run", fg="cyan"))
 
 
@@ -129,7 +129,7 @@ def run():
     Runs archives
     """
     with db.connect():
-        with arch.load_config() as config:
+        with load_config() as config:
             if len(config.archives) == 0:
                 return click.echo("No archives created, create one using " + click.style("archie create [archive name] [channel(s)]", fg="cyan"))
 
