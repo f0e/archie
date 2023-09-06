@@ -29,7 +29,9 @@ session = Session()
 
 class Base(orm.DeclarativeBase):
     def __repr__(self) -> str:
-        return self._repr(id=self.id)
+        if isinstance(self, orm.DeclarativeBase):
+            return self._repr(**{c.key: getattr(self, c.key) for c in self.__table__.columns})
+        return super().__repr__()
 
     def _repr(self, **fields: dict[str, typing.Any]) -> str:
         """
@@ -75,7 +77,7 @@ class Channel(Base):
 
     # tracked
     name: orm.Mapped[str]
-    avatar_url: orm.Mapped[str]
+    avatar_url: orm.Mapped[str | None]
     banner_url: orm.Mapped[str | None]
     description: orm.Mapped[str]
     subscribers: orm.Mapped[int]
@@ -108,14 +110,8 @@ class Channel(Base):
     def get_next_of_status(status: ChannelStatus, updated_before: datetime | None = None):
         return (
             session.query(Channel)
-            .filter(
-                Channel.status == status,
-                sa.or_(
-                    Channel.update_time is None,
-                    Channel.update_status != Channel.status,
-                    Channel.update_time <= updated_before,
-                ),
-            )
+            .filter(Channel.status == status)
+            .filter((Channel.update_time is None) | Channel.update_status != Channel.status | Channel.update_time <= updated_before)
             .first()
         )
 
@@ -129,7 +125,7 @@ class Channel(Base):
         status: ChannelStatus | None,
         id: str,
         name: str,
-        avatar_url: str,
+        avatar_url: str | None,
         banner_url: str | None,
         description: str,
         subscribers: int,
@@ -160,7 +156,7 @@ class Channel(Base):
                         banner_url=existing_channel.banner_url,
                         description=existing_channel.description,
                         subscribers=existing_channel.subscribers,
-                        timestamp=existing_channel.timestamp,
+                        update_time=existing_channel.update_time,
                     )
                 )
 
@@ -223,12 +219,12 @@ class ChannelVersion(Base):
     channel: orm.Mapped[Channel] = orm.relationship(back_populates="versions")
 
     name: orm.Mapped[str]
-    avatar_url: orm.Mapped[str]
-    banner_url: orm.Mapped[str]
+    avatar_url: orm.Mapped[str | None]
+    banner_url: orm.Mapped[str | None]
     description: orm.Mapped[str]
     subscribers: orm.Mapped[int]
 
-    timestamp: orm.Mapped[datetime]
+    update_time: orm.Mapped[datetime]
 
 
 ###

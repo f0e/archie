@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from dacite import from_dict
 from pydantic import TypeAdapter

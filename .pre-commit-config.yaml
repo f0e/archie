@@ -10,11 +10,6 @@ repos:
       - id: debug-statements
         language_version: python3
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.0.287
-    hooks:
-      - id: ruff
-
   - repo: https://github.com/PyCQA/isort
     rev: 5.12.0
     hooks:
@@ -36,6 +31,11 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-requests]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.287
+    hooks:
+      - id: ruff
 
   - repo: https://github.com/python-poetry/poetry
     rev: 1.6.1

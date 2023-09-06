@@ -2,9 +2,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import yt_dlp
+import yt_dlp  # type: ignore
 
-from ..database.database import Channel, ChannelStatus, Video, VideoComment
+from ..database.database import Channel, ChannelStatus, Video
 from . import filter
 
 
@@ -42,7 +42,7 @@ def parse_channel(channelLink: str, status: ChannelStatus) -> Channel | None:
                 data = yt.extract_info(f"https://www.youtube.com/{channelLink}/about", download=False)
             except yt_dlp.utils.DownloadError as e:
                 if "This channel does not have a about tab" in e.msg:
-                    log(f"channel doesn't have an about page? skipping")
+                    log("channel doesn't have an about page? skipping")
                     return None
                 else:
                     raise e

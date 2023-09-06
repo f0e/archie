@@ -30,7 +30,9 @@ archie = 'archie.cli:archie'
 line-length = 160
 
 [tool.ruff]
-line-length = 160
+ignore = [
+  "E501", # line length
+]
 
 [tool.isort]
 profile = "black"
