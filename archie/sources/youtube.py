@@ -230,37 +230,36 @@ process_lock = threading.Lock()
 
 
 def progress_hooks(data):
-    with process_lock:
-        match data["status"]:
-            case "finished":
-                video_id = data["info_dict"]["id"]
-                if video_id in downloads:
-                    del downloads[video_id]
+    match data["status"]:
+        case "finished":
+            video_id = data["info_dict"]["id"]
+            if video_id in downloads:
+                del downloads[video_id]
 
-            case "downloading":
-                video_id = data["info_dict"]["id"]
-                downloads[video_id] = VideoProgress(data)
+        case "downloading":
+            video_id = data["info_dict"]["id"]
+            downloads[video_id] = VideoProgress(data)
 
-        total_speed = 0
+    total_speed = 0
 
-        messages = []
-        for id, download in downloads.items():
-            percent = 0
+    messages = []
+    for id, download in downloads.items():
+        percent = 0
 
-            if download.total_bytes:
-                percent = download.downloaded_bytes / download.total_bytes
+        if download.total_bytes:
+            percent = download.downloaded_bytes / download.total_bytes
 
-            messages.append(f"{Fore.LIGHTBLACK_EX}{id}:{Style.RESET_ALL} {percent*100:.2f}%")
+        messages.append(f"{Fore.LIGHTBLACK_EX}{id}:{Style.RESET_ALL} {percent*100:.2f}%")
 
-            if download.speed:
-                total_speed += download.speed
+        if download.speed:
+            total_speed += download.speed
 
-        total_speeds.insert(0, total_speed)
-        del total_speeds[50:]
+    total_speeds.insert(0, total_speed)
+    del total_speeds[50:]
 
-        average_speed = sum(total_speeds) / len(total_speeds)
+    average_speed = sum(total_speeds) / len(total_speeds)
 
-        utils.print_progress(f"{len(downloads)} downloads ({average_speed/1000000:.2f} MB/s) " + ", ".join(messages))
+    utils.print_progress(f"{len(downloads)} downloads ({average_speed/1000000:.2f} MB/s) " + ", ".join(messages))
 
 
 @dataclass
