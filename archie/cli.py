@@ -71,10 +71,8 @@ def create(name, channels):
         utils.log(
             msg + " To create an archive, enter a name and a list of YouTube channel links or IDs after the create command."
         )
-        utils.log(
-            "e.g. [bright_black]create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/bright_black]"
-        )
-        utils.log("or [bright_black]archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/bright_black]")
+        utils.log("e.g. [dim]create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/dim]")
+        utils.log("or [dim]archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/dim]")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -92,7 +90,7 @@ def create(name, channels):
                 return utils.log("Cancelled archive creation.")
 
     utils.log(f"Created archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    utils.log("To run the archive, use [bright_black]archie run[/bright_black]")
+    utils.log("To run the archive, use [dim]archie run[/dim]")
 
 
 @archie.command()
@@ -107,10 +105,8 @@ def add(name, channels):
         utils.log(
             msg + " To add channels to an archive, enter a name and a list of YouTube channel links or IDs after the add command."
         )
-        utils.log(
-            "e.g. [bright_black]archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/bright_black]"
-        )
-        utils.log("or [bright_black]archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/bright_black]")
+        utils.log("e.g. [dim]archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/dim]")
+        utils.log("or [dim]archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/dim]")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -128,7 +124,7 @@ def add(name, channels):
                 return utils.log("Cancelled archive creation.")
 
     utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    utils.log("To run the archive, use [bright_black]archie run[/bright_black]")
+    utils.log("To run the archive, use [dim]archie run[/dim]")
 
 
 @archie.command()
@@ -140,9 +136,7 @@ def run():
         with load_config() as config:
             with youtube.rich_progress:
                 if len(config.archives) == 0:
-                    return utils.log(
-                        "No archives created, create one using [bright_black]create [archive name] [channel(s)][/bright_black]"
-                    )
+                    return utils.log("No archives created, create one using [dim]create [archive name] [channel(s)][/dim]")
 
                 downloader.init()
 
@@ -174,7 +168,7 @@ def filter(name: str):
     #     with load_config() as config:
     #         if len(config.archives) == 0:
     #             return utils.log(
-    #                 "No archives created, create one using [bright_black]create [archive name] [channel(s)][/bright_black]"
+    #                 "No archives created, create one using [dim]create [archive name] [channel(s)][/dim]"
     #             )
 
     #         # check archive name
