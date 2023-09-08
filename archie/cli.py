@@ -4,7 +4,7 @@ import time
 import click
 
 import archie.database.database as db
-from archie.config import ArchiveConfig, Config, load_config
+from archie.config import CFG_PATH, ArchiveConfig, Config, load_config
 from archie.sources import youtube
 from archie.tasks import downloader, parser
 from archie.utils import utils
@@ -38,14 +38,21 @@ def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> b
         else:
             channelLink = channel
 
-        data = youtube.get_data(channelLink)
-        channel_id = data["channel_id"]
+        try:
+            data = youtube.get_data(channelLink)
+            channel_id = data["channel_id"]
 
-        if channel_id in channel_ids or (archive and channel_id in archive.channels):
-            utils.log(f"Skipping duplicate channel {channel}")
-            continue
+            if channel_id in channel_ids or (archive and channel_id in archive.channels):
+                utils.log(f"Skipping duplicate channel {channel}")
+                continue
 
-        channel_ids.append(channel_id)
+            channel_ids.append(channel_id)
+        except Exception:
+            utils.log(f"Failed to fetch channel {channelLink}, skipping.")
+
+    if len(channel_ids) == 0:
+        utils.log("No valid channels were found.")
+        return False
 
     if archive:
         # add channels to existing archive
@@ -89,7 +96,7 @@ def create(name, channels):
             if not add_channels_to_archive(config, name, channels):
                 return utils.log("Cancelled archive creation.")
 
-    utils.log(f"Created archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
+    utils.log(f"Created archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
     utils.log("To run the archive, use [dim]archie run[/dim]")
 
 
@@ -123,7 +130,7 @@ def add(name, channels):
             if not add_channels_to_archive(config, name, channels):
                 return utils.log("Cancelled archive creation.")
 
-    utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
+    utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
     utils.log("To run the archive, use [dim]archie run[/dim]")
 
 

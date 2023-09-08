@@ -49,6 +49,7 @@ def get_data(channelLink: str):
     ydl_opts = {
         "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
         "quiet": True,
+        "no_warnings": True,
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
