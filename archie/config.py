@@ -8,7 +8,11 @@ from archie import ARCHIE_PATH
 from archie.database import database as db
 from archie.utils.utils import PrettyDumper
 
-CFG_PATH = ARCHIE_PATH / "config.yaml"  # fixed for now, if that changes add in a unique column to the archive table and handle that properly
+CFG_PATH = (
+    ARCHIE_PATH / "config.yaml"
+)  # fixed for now, if that changes add in a unique column to the archive table and handle that properly
+
+TEMP_DL_PATH = ARCHIE_PATH / "temp-downloads"
 
 
 class FilterOptions(BaseModel):

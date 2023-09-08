@@ -8,7 +8,7 @@ from archie.utils import utils
 
 
 def log(*args, **kwargs):
-    utils.safe_log("parse", "green", *args, **kwargs)
+    utils.module_log("parse", "green", *args, **kwargs)
 
 
 def parse(config: Config):

@@ -1,61 +1,36 @@
-import re
-import shutil
-import threading
+import time
 from urllib.parse import urlparse
 
-import click
 import requests
 import yaml
-from colorama import Fore, Style
+from rich.style import Style
 
-print_lock = threading.RLock()  # rlock - same thread can acquire multiple times, other threads have to wait
-
-sameline_printed = False
-sameline_length = 0
+from archie import console, error_console
 
 
-def len_no_ansi(string):
-    return len(
-        re.sub(r"[\u001B\u009B][\[\]()#;?]*((([a-zA-Z\d]*(;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|((\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))", "", string)
-    )
+def log(*args, **kwargs):
+    console.print(*args, **kwargs)
 
 
-def safe_log(module: str, module_colour: str, *args, **kwargs):
-    with print_lock:
-        global sameline_printed
-        if sameline_printed:
-            print(" " * sameline_length, end="\r")
-            sameline_printed = False
-
-        click.echo(click.style(f"[{module}] ", fg=module_colour) + " ".join(map(str, args)), **kwargs)
+def module_log(module: str, module_style: str | Style | None, *args, **kwargs):
+    console.print(f"[{module_style}]\[{module}][/{module_style}] " + " ".join(map(str, args)), **kwargs)
 
 
-def print_progress(msg, max_width=None):
-    with print_lock:
-        global sameline_printed, sameline_length
+def retryable(function, fail_message: str, max_retries=5, retry_delay_sec=5, on_exception=None):
+    for i in range(max_retries):
+        try:
+            return function()
+        except Exception as e:
+            # todo: print the error properly, HOW DO YOU DO THAT
+            error_console.print(repr(e))
 
-        overflow_text = "..."
+            log(fail_message)
+            time.sleep(retry_delay_sec)
 
-        if not max_width:
-            max_width = shutil.get_terminal_size()[0]
+            if on_exception:
+                on_exception(e)
 
-        # handle text overflow
-        overflowed = False
-        truncated_message = ""
-        for char in msg:
-            if len_no_ansi(truncated_message + char + overflow_text) > max_width:
-                overflowed = True
-                break
-
-            truncated_message += char
-
-        if overflowed:
-            msg = truncated_message + f"{Fore.LIGHTBLACK_EX}{overflow_text}{Style.RESET_ALL}"
-
-        print(msg, end="\r")
-
-        sameline_printed = True
-        sameline_length = len_no_ansi(msg)
+    return None
 
 
 def validate_url(x):
@@ -79,7 +54,7 @@ def download_image(url):
     if response.status_code == 200:
         return response.content
     else:
-        click.echo(f"Failed to download image from URL: {url}")
+        log(f"Failed to download image from URL: {url}")
         return None
 
 

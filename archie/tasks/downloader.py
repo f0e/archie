@@ -6,14 +6,14 @@ from pathlib import Path
 import archie.database.database as db
 import archie.sources.youtube as youtube
 import archie.utils.utils as utils
-from archie.config import Config
+from archie.config import TEMP_DL_PATH, Config
 
 
 def log(*args, **kwargs):
-    utils.safe_log("downloader", "blue", *args, **kwargs)
+    utils.module_log("downloader", "blue", *args, **kwargs)
 
 
-def check_downloads():
+def init():
     # remove deleted downloads
     for download in db.VideoDownload.get_downloads():
         path = Path(download.path)
@@ -23,8 +23,10 @@ def check_downloads():
             download.delete()
 
     # reset downloading state
-    for video in db.Video.get_videos():
-        video.reset_downloading()
+    db.Video.reset_download_states()
+
+    # remove temp downloads (for safety, resuming causes issues sometimes)
+    shutil.rmtree(TEMP_DL_PATH)
 
 
 download_counter = 0
@@ -72,6 +74,11 @@ def download_videos(config: Config):
 
         with download_counter_lock:
             download_counter -= 1
+
+        if not download_data:
+            # download somehow failed 5 times, skip it
+            # todo: actually skip it, right now it'll just try to download it again
+            continue
 
         for other_config in config.archives[1:]:
             other_download_path = Path(other_config.downloads.download_path).expanduser()

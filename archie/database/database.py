@@ -15,7 +15,7 @@ from archie.utils import utils
 
 
 def log(*args, **kwargs):
-    utils.safe_log("db", "white", *args, **kwargs)
+    utils.module_log("db", "white", *args, **kwargs)
 
 
 # TODO: handle this shit in main
@@ -107,10 +107,21 @@ class Archive(Base):
             .filter(
                 sa.or_(
                     Channel.update_time.is_(None),
+                    Channel.update_time <= updated_before,  # todo: this fails when updated_before is None
                     Channel.update_status != Channel.status,
-                    Channel.update_time <= updated_before,
                 )
             )
+            .first()
+        )
+
+    def get_queued_channel(self, index: int):
+        session = Session()
+
+        return (
+            session.query(Channel)
+            .filter(Channel.archives.any(id=self.id))
+            .filter(Channel.status == ChannelStatus.QUEUED)
+            .offset(index)
             .first()
         )
 
@@ -347,6 +358,11 @@ class Video(Base):
     channel: orm.Mapped[Channel] = orm.relationship(back_populates="videos")
 
     @staticmethod
+    def get(id: str):
+        session = Session()
+        return session.query(Video).filter(Video.id == id).first()
+
+    @staticmethod
     def get_next_download():
         with download_lock:  # need to wait for other threads to set downloading=True
             session = Session()
@@ -367,17 +383,14 @@ class Video(Base):
             return video
 
     @staticmethod
-    def get_videos():
+    def reset_download_states():
         session = Session()
-        yield from session.query(Video)
-
-    def reset_downloading(self):
-        session = Session()
-
-        self.downloading = False
+        session.query(Video).update({Video.downloading: False})
         session.commit()
 
-    def update_details(self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime):
+    def update_details(
+        self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime
+    ):
         session = Session()
 
         self.thumbnail_url = thumbnail_url

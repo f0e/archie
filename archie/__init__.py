@@ -2,6 +2,11 @@ import sys
 from os import getenv
 from pathlib import Path
 
+from rich.console import Console
+
+console = Console(highlight=False)
+error_console = Console(stderr=True, highlight=False)
+
 
 def get_datadir() -> Path:
     if sys.platform.startswith("win"):

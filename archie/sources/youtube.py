@@ -5,22 +5,39 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import yt_dlp  # type: ignore
-from colorama import Fore, Style
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 import archie.config as cfg
-from archie import ARCHIE_PATH
+from archie import console
 from archie.database.database import Archive, Channel, ChannelStatus, Video
 from archie.sources import filter
 from archie.utils import utils
+
+rich_progress = Progress(
+    TaskProgressColumn(justify="right"),
+    BarColumn(bar_width=30),
+    TextColumn("[bold blue]{task.fields[video].channel.name} - {task.fields[video].title}"),
+    TimeRemainingColumn(),
+    DownloadColumn(),
+    console=console,
+)
 
 in_spider = False
 
 
 def log(*args, **kwargs):
     if not in_spider:
-        utils.safe_log("youtube", "red", *args, **kwargs)
+        utils.module_log("youtube", "red", *args, **kwargs)
     else:
-        utils.safe_log("youtube (spider)", "magenta", *args, **kwargs)
+        utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
 
 
 def debug_write(yt, data, filename):
@@ -42,7 +59,9 @@ def update_channel(channel: Channel, archive: cfg.ArchiveConfig) -> Channel | No
     return parse_channel("channel/" + channel.id, archive, channel.status)
 
 
-def parse_channel(channel_link: str, archive_config: cfg.ArchiveConfig, status: ChannelStatus, from_spider: bool = False) -> Channel | None:
+def parse_channel(
+    channel_link: str, archive_config: cfg.ArchiveConfig, status: ChannelStatus, from_spider: bool = False
+) -> Channel | None:
     # adds a channel to the database. will filter out unwanted channels.
 
     ydl_opts = {
@@ -199,7 +218,7 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
     return True
 
 
-class VideoProgress:
+class YTProgressData:
     filename: str
     tmpfilename: str
     downloaded_bytes: int
@@ -224,42 +243,43 @@ class VideoProgress:
         self.fragment_count = data.get("fragment_count")
 
 
-downloads: dict[str, VideoProgress] = dict()
+class ProgressBar:
+    task_id: TaskID
+
+    def __init__(self, video: Video):
+        self.video = video
+        self.task_id = rich_progress.add_task("download", video=video, start=False, total=0)
+
+    def __del__(self):
+        rich_progress.remove_task(self.task_id)
+
+    def update(self, progress_data: YTProgressData):
+        rich_progress.start_task(self.task_id)
+        rich_progress.update(task_id=self.task_id, completed=progress_data.downloaded_bytes, total=progress_data.total_bytes)
+
+
+progresses: dict[str, ProgressBar] = dict()
 total_speeds: list[int] = []
 process_lock = threading.Lock()
 
 
 def progress_hooks(data):
     match data["status"]:
-        case "finished":
-            video_id = data["info_dict"]["id"]
-            if video_id in downloads:
-                del downloads[video_id]
-
         case "downloading":
             video_id = data["info_dict"]["id"]
-            downloads[video_id] = VideoProgress(data)
 
-    total_speed = 0
+            assert video_id in progresses
+            progress = progresses[video_id]
 
-    messages = []
-    for id, download in downloads.items():
-        percent = 0
+            progress_data = YTProgressData(data)
 
-        if download.total_bytes:
-            percent = download.downloaded_bytes / download.total_bytes
+            rich_progress.start_task(progress.task_id)
+            rich_progress.update(progress.task_id)
 
-        messages.append(f"{Fore.LIGHTBLACK_EX}{id}:{Style.RESET_ALL} {percent*100:.2f}%")
+            if video_id not in progresses:
+                progresses[video_id] = Progress(video_id)
 
-        if download.speed:
-            total_speed += download.speed
-
-    total_speeds.insert(0, total_speed)
-    del total_speeds[50:]
-
-    average_speed = sum(total_speeds) / len(total_speeds)
-
-    utils.print_progress(f"{len(downloads)} downloads ({average_speed/1000000:.2f} MB/s) " + ", ".join(messages))
+            progresses[video_id].update(progress_data)
 
 
 @dataclass
@@ -268,10 +288,10 @@ class DownloadedVideo:
     format: str
 
 
-def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
+def download_video(video: Video, download_folder: Path) -> DownloadedVideo | None:
     # returns the downloaded format
 
-    temp_dl_path = ARCHIE_PATH / "temp-downloads"
+    progresses[video.id] = ProgressBar(video)
 
     ydl_opts = {
         "progress_hooks": [progress_hooks],
@@ -298,16 +318,29 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
             },
         ],
         # output folder
-        "outtmpl": str(temp_dl_path.expanduser() / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
+        "outtmpl": str(cfg.TEMP_DL_PATH.expanduser() / "%(channel_id)s/%(id)s.f%(format_id)s.%(ext)s"),
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        data = yt.extract_info(f"https://www.youtube.com/watch?v={video.id}", download=True)
+        max_retries = 5
+        data = utils.retryable(
+            lambda: yt.extract_info(f"https://www.youtube.com/watch?v={video.id}", download=True),
+            f"failed to download video '{video.title}', retrying... ({video.id})",
+            max_retries=max_retries,
+        )
+
+        if video.id in progresses:
+            del progresses[video.id]
+
+        if not data:
+            log(f"download for video '{video.title}' failed after {max_retries} retries, skipping. ({video.id})")
+            return None
+
         download_data = data["requested_downloads"][0]
 
         # get just the download path, not the stuff before it. so c:\...\temp-downloads\channel\video.mkv just becomes channel\video.mkv
         downloaded_path = Path(download_data["filepath"])
-        relative_path = downloaded_path.relative_to(temp_dl_path)
+        relative_path = downloaded_path.relative_to(cfg.TEMP_DL_PATH)
 
         # build proper download path
         final_path = download_folder / relative_path
@@ -318,9 +351,6 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo:
             # move completed download
             final_path.parent.mkdir(parents=True, exist_ok=True)
             downloaded_path.rename(final_path)
-
-        # # delete temp folder
-        # shutil.rmtree(temp_dl_path)
 
         return DownloadedVideo(
             path=final_path,
