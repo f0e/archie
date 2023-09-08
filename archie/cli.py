@@ -2,7 +2,6 @@ import threading
 import time
 
 import click
-from colorama import Fore, Style
 
 import archie.database.database as db
 from archie.config import ArchiveConfig, Config, load_config
@@ -73,11 +72,9 @@ def create(name, channels):
             msg + " To create an archive, enter a name and a list of YouTube channel links or IDs after the create command."
         )
         utils.log(
-            f"e.g. {Fore.LIGHTBLACK_EX}archie create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma{Style.RESET_ALL}"
+            "e.g. [bright_black]create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/bright_black]"
         )
-        utils.log(
-            f"or {Fore.LIGHTBLACK_EX}archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg{Style.RESET_ALL}"
-        )
+        utils.log("or [bright_black]archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/bright_black]")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -95,7 +92,7 @@ def create(name, channels):
                 return utils.log("Cancelled archive creation.")
 
     utils.log(f"Created archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    utils.log(f"To run the archive, use {Fore.LIGHTBLACK_EX}archie run{Style.RESET_ALL}")
+    utils.log("To run the archive, use [bright_black]archie run[/bright_black]")
 
 
 @archie.command()
@@ -111,11 +108,9 @@ def add(name, channels):
             msg + " To add channels to an archive, enter a name and a list of YouTube channel links or IDs after the add command."
         )
         utils.log(
-            f"e.g. {Fore.LIGHTBLACK_EX}archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma{Style.RESET_ALL}"
+            "e.g. [bright_black]archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/bright_black]"
         )
-        utils.log(
-            f"or {Fore.LIGHTBLACK_EX}archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg{Style.RESET_ALL}"
-        )
+        utils.log("or [bright_black]archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/bright_black]")
 
     if not name:
         return print_error_and_examples("No name provided.")
@@ -133,7 +128,7 @@ def add(name, channels):
                 return utils.log("Cancelled archive creation.")
 
     utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {config.CFG_PATH}.")
-    utils.log(f"To run the archive, use {Fore.LIGHTBLACK_EX}archie run{Style.RESET_ALL}")
+    utils.log("To run the archive, use [bright_black]archie run[/bright_black]")
 
 
 @archie.command()
@@ -146,7 +141,7 @@ def run():
             with youtube.rich_progress:
                 if len(config.archives) == 0:
                     return utils.log(
-                        "No archives created, create one using {Fore.LIGHTBLACK_EX}create [archive name] [channel(s)]{Style.RESET_ALL}"
+                        "No archives created, create one using [bright_black]create [archive name] [channel(s)][/bright_black]"
                     )
 
                 downloader.init()
@@ -179,7 +174,7 @@ def filter(name: str):
     #     with load_config() as config:
     #         if len(config.archives) == 0:
     #             return utils.log(
-    #                 "No archives created, create one using {Fore.LIGHTBLACK_EX}create [archive name] [channel(s)]{Style.RESET_ALL}"
+    #                 "No archives created, create one using [bright_black]create [archive name] [channel(s)][/bright_black]"
     #             )
 
     #         # check archive name
