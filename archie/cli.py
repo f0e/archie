@@ -277,3 +277,7 @@ def filter(name: str):
     #                     break
 
     #         utils.log("Quitting.")
+
+
+if __name__ == "__main__":
+    archie()

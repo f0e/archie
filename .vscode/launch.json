@@ -10,7 +10,7 @@
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "module": "archie.cli",
-      "args": []
+      "args": ["run"]
     }
   ]
 }
