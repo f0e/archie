@@ -2,7 +2,10 @@
 name = "archie"
 version = "0.1.0"
 description = ""
-authors = ["f0e <7321764+f0e@users.noreply.github.com>"]
+authors = [
+  "f0e <7321764+f0e@users.noreply.github.com>",
+  "newgan <53710132+newgan@users.noreply.github.com>"
+  ]
 readme = "readme.md"
 repository = "https://github.com/f0e/archie"
 classifiers = [

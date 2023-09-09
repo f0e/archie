@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 import click
 
@@ -144,6 +145,12 @@ def run():
             with youtube.rich_progress:
                 if len(config.archives) == 0:
                     return utils.log("No archives created, create one using [dim]create [archive name] [channel(s)][/dim]")
+
+                for archive in config.archives:
+                    if not Path(archive.downloads.download_path).is_absolute():
+                        return utils.log(
+                            f"the download path specified in archive '{archive.name}' is not a valid path. Please add a proper path and try again."
+                        )
 
                 downloader.init()
 

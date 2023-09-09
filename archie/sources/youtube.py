@@ -1,4 +1,5 @@
 import json
+import shutil
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ from rich.progress import (
 
 import archie.config as cfg
 from archie import console
-from archie.database.database import Archive, Channel, ChannelStatus, Video
+from archie.database.database import Archive, Channel, ChannelStatus, Playlist, Video
 from archie.sources import filter
 from archie.utils import utils
 
@@ -135,6 +136,7 @@ def parse_channel(
         )
 
         log(f"parsed channel {channel.name} ({channel.id})")
+        # parse_playlists(channel_link, archive_config)
 
         for entry in data["entries"]:
             video = channel.add_or_update_video(
@@ -217,6 +219,22 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
         log(f"parsed video details, got {len(video.comments)} comments")
 
     return True
+
+
+def parse_playlists(channel_link: str, archive: cfg.ArchiveConfig) -> list[Playlist]:
+    ydl_opts = {
+        "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
+    }
+
+    log("parsing playlist")
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        try:
+            data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
+
+            log(data)
+        except yt_dlp.utils.DownloadError as e:
+            log(e.msg)
 
 
 class YTProgressData:
@@ -351,7 +369,7 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo | Non
         else:
             # move completed download
             final_path.parent.mkdir(parents=True, exist_ok=True)
-            downloaded_path.rename(final_path)
+            shutil.move(downloaded_path, final_path)
 
         return DownloadedVideo(
             path=final_path,

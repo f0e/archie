@@ -25,9 +25,10 @@ class SpiderFilterOptions(BaseModel):
 
     filter_verified: bool = False
     filter_livestreams: bool = True
-
     block_no_videos: bool = False
     max_videos: int = 300
+
+    playlists: bool = False
 
 
 class UpdateOptions(BaseModel):

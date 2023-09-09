@@ -176,6 +176,7 @@ class Channel(Base):
     versions: orm.Mapped[list[ChannelVersion]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
     comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
     videos: orm.Mapped[list[Video]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
+    playlists: orm.Mapped[list[Playlist]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
 
     # backref
     person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
@@ -269,6 +270,7 @@ class Channel(Base):
         duration: float,
         availability: str,
         views: int,
+        playlist: Playlist = None,
     ) -> Video:
         session = Session()
 
@@ -283,6 +285,9 @@ class Channel(Base):
         new_video.duration = duration
         new_video.availability = availability
         new_video.views = views
+
+        if playlist:
+            new_video.playlists_in.append(playlist)
 
         if not existing_video:
             self.videos.append(new_video)
@@ -352,6 +357,7 @@ class Video(Base):
     # relationships
     comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
     downloads: orm.Mapped[list[VideoDownload]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
+    playlists_in: orm.Mapped[list[Playlist]] = orm.relationship("Playlist", secondary="playlist_videos", back_populates="videos")
 
     # backref
     channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
@@ -505,6 +511,34 @@ class VideoComment(Base):
 
     parent_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("video_comment.id"))
     parent: orm.Mapped[VideoComment | None] = orm.relationship(back_populates="replies")
+
+
+class PlaylistVideo(Base):
+    __tablename__ = "playlist_videos"
+
+    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"), primary_key=True)
+    video_id = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
+
+    from_spider: orm.Mapped[bool]
+
+
+class Playlist(Base):
+    __tablename__ = "playlist"
+
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
+    views: orm.Mapped[int]
+    cover_url: orm.Mapped[str | None]
+
+    # relationships
+    videos: orm.Mapped[list[Video]] = orm.relationship("Video", secondary="playlist_videos", back_populates="playlists_in")
+
+    # backrefs
+    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
+    channel: orm.Mapped[Channel] = orm.relationship(back_populates="playlists")
+
+    # versions: orm.Mapped[list[PlaylistVersion]] = orm.relationship(back_populates="playlist", cascade="all, delete-orphan") #TODO: playlist versions
+
+    update_time: orm.Mapped[datetime]
 
 
 def initialise():
