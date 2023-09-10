@@ -41,9 +41,14 @@ def log(*args, **kwargs):
         utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
 
 
-def debug_write(yt, data, filename):
+def debug_write_yt(yt, data, filename):
     with open(f"{filename}.json", "w") as out_file:
         out_file.write(json.dumps(yt.sanitize_info(data)))
+
+
+def debug_write(data, filename):
+    with open(f"{filename}.json", "w") as out_file:
+        out_file.write(json.dumps(data))
 
 
 def get_data(channelLink: str):
@@ -140,14 +145,14 @@ def parse_channel(
         if archive_config.filters.playlists:
             parse_playlists(channel, channel_link)
 
-        parse_videos(channel, data["entries"], archive_config)
+        parse_channel_videos(channel, data["entries"], archive_config)
 
         channel.set_updated()
 
     return channel
 
 
-def parse_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
+def parse_channel_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
     for entry in videos:
         video = channel.add_or_update_video(
             id=entry["id"],
@@ -161,10 +166,10 @@ def parse_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
 
         if channel.status == ChannelStatus.ACCEPTED:
             video_min_update_time = datetime.utcnow() - timedelta(hours=archive.updating.video_update_gap_hours)
-            if not video.fully_parsed or video.update_time <= video_min_update_time:
+            if not video.fully_parsed or (video.update_time and video.update_time <= video_min_update_time):
                 parse_video_details(video, archive)
 
-        log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
+    log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
 
 
 def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
@@ -234,39 +239,36 @@ def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist]:
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        try:
-            data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
+        data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
 
-            playlists = data["entries"]
+        playlist_datas = data["entries"]
 
-            for playlist in playlists:
-                parse_playlist_details(playlist, channel)
+        for playlist_data in playlist_datas:
+            playlist = parse_playlist_details(playlist_data["id"], channel)
 
-        except yt_dlp.utils.DownloadError as e:
-            log(e.msg)
+            log(f"parsed playlist {playlist.title}, {len(playlist.videos)} videos found ({playlist.id})")
+
+    return channel.playlists
 
 
-def parse_playlist_details(playlist, channel: Channel):
+def parse_playlist_details(playlist_id: str, channel: Channel) -> Playlist:
     ydl_opts = {"quiet": True}
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        try:
-            data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist['id']}", download=False)
+        data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist_id}", download=False)
 
-            channel.add_or_update_playlist(
-                id=data["id"],
-                title=data["title"],
-                availability=data["availability"],
-                description=data["description"],
-                tags_list=data["tags"],
-                thumbnail_url=data["thumbnails"][0]["url"],
-                modified_date=data["modified_date"],
-                view_count=data["view_count"],
-                channel_id=channel.id,
-                videos=data["entries"],
-            )
-        except yt_dlp.utils.DownloadError as e:
-            log(e.msg)
+        return channel.add_or_update_playlist(
+            id=data["id"],
+            title=data["title"],
+            availability=data["availability"],
+            description=data["description"],
+            tags_list=data["tags"],
+            thumbnail_url=data["thumbnails"][0]["url"],
+            modified_date=data["modified_date"],
+            view_count=data["view_count"],
+            channel_id=channel.id,
+            videos=data["entries"],
+        )
 
 
 class YTProgressData:
