@@ -16,7 +16,7 @@ TEMP_DL_PATH = ARCHIE_PATH / "temp-downloads"
 
 
 class FilterOptions(BaseModel):
-    playlists: bool = True
+    parse_playlists: bool = True
 
 
 class SpiderFilterOptions(BaseModel):
@@ -27,6 +27,8 @@ class SpiderFilterOptions(BaseModel):
     filter_livestreams: bool = True
     block_no_videos: bool = False
     max_videos: int = 300
+
+    parse_playlists: bool = True
 
 
 class UpdateOptions(BaseModel):
