@@ -148,7 +148,7 @@ def parse_channel(
 
 
 def parse_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
-    for entry in videos["entries"]:
+    for entry in videos:
         video = channel.add_or_update_video(
             id=entry["id"],
             title=entry["title"],

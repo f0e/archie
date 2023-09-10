@@ -327,26 +327,22 @@ class Channel(Base):
         new_playlist.description = description
         new_playlist.tags = tags
         new_playlist.thumbnail_url = thumbnail_url
-        new_playlist.modified_date = datetime.fromisoformat(modified_date).utcnow()
+        new_playlist.modified_date = datetime.fromisoformat(modified_date)
         new_playlist.view_count = view_count
         new_playlist.channel_id = channel_id
         new_playlist.timestamp = datetime.utcnow()
 
         for video in videos:
-            new_video = new_playlist.add_video(
-                self.add_or_update_video(
-                    id=video["id"],
-                    title=video["title"],
-                    thumbnail_url=video["thumbnails"][0]["url"],
-                    description=video["description"],
-                    duration=video["duration"],
-                    availability=video["availability"],
-                    views=video["view_count"],
-                    # playlist=new_playlist,
-                )
+            self.add_or_update_video(
+                id=video["id"],
+                title=video["title"],
+                thumbnail_url=video["thumbnails"][0]["url"],
+                description=video["description"],
+                duration=video["duration"],
+                availability=video["availability"],
+                views=video["view_count"],
+                playlist=new_playlist,
             )
-
-            new_playlist.videos.append(new_video)
 
         if not existing_playlist:
             session.add(new_playlist)
@@ -575,7 +571,7 @@ class VideoComment(Base):
 class PlaylistVideo(Base):
     __tablename__ = "playlist_videos"
 
-    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"))
+    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"), primary_key=True)
     video_id = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
 
 
