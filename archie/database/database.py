@@ -287,7 +287,10 @@ class Channel(Base):
         new_video.views = views
 
         if playlist:
-            new_video.playlists_in.append(playlist)
+            existing_playlist = utils.find(new_video.playlists_in, lambda x: x.id == playlist.id)
+
+            if not existing_playlist:
+                new_video.playlists_in.append(playlist)
 
         if not existing_video:
             self.videos.append(new_video)
@@ -295,6 +298,62 @@ class Channel(Base):
         session.commit()
 
         return new_video
+
+    def add_or_update_playlist(
+        self,
+        id: str,
+        title: str,
+        availability: str,
+        description: str,
+        tags_list: list[str],
+        thumbnail_url: str,
+        modified_date: str,
+        view_count: int,
+        channel_id: str,
+        videos,
+    ):
+        tags = ",".join(tags_list)
+
+        session = Session()
+
+        existing_playlist = utils.find(self.playlists, lambda x: x.id == id)
+        new_playlist = existing_playlist or Playlist()
+
+        # TODO: handle playlist changes
+
+        new_playlist.id = id
+        new_playlist.title = title
+        new_playlist.availability = availability
+        new_playlist.description = description
+        new_playlist.tags = tags
+        new_playlist.thumbnail_url = thumbnail_url
+        new_playlist.modified_date = datetime.fromisoformat(modified_date).utcnow()
+        new_playlist.view_count = view_count
+        new_playlist.channel_id = channel_id
+        new_playlist.timestamp = datetime.utcnow()
+
+        for video in videos:
+            new_video = new_playlist.add_video(
+                self.add_or_update_video(
+                    id=video["id"],
+                    title=video["title"],
+                    thumbnail_url=video["thumbnails"][0]["url"],
+                    description=video["description"],
+                    duration=video["duration"],
+                    availability=video["availability"],
+                    views=video["view_count"],
+                    # playlist=new_playlist,
+                )
+            )
+
+            new_playlist.videos.append(new_video)
+
+        if not existing_playlist:
+            session.add(new_playlist)
+
+        session.commit()
+
+        return new_playlist
 
     def set_updated(self):
         session = Session()
@@ -516,18 +575,20 @@ class VideoComment(Base):
 class PlaylistVideo(Base):
     __tablename__ = "playlist_videos"
 
-    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"), primary_key=True)
+    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"))
     video_id = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
-
-    from_spider: orm.Mapped[bool]
 
 
 class Playlist(Base):
     __tablename__ = "playlist"
 
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
-    views: orm.Mapped[int]
-    cover_url: orm.Mapped[str | None]
+    id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
+    title: orm.Mapped[str]
+    view_count: orm.Mapped[int | None]
+    thumbnail_url: orm.Mapped[str | None]
+    availability: orm.Mapped[str]
+    description: orm.Mapped[str | None]
+    tags: orm.Mapped[str | None]
 
     # relationships
     videos: orm.Mapped[list[Video]] = orm.relationship("Video", secondary="playlist_videos", back_populates="playlists_in")
@@ -538,7 +599,21 @@ class Playlist(Base):
 
     # versions: orm.Mapped[list[PlaylistVersion]] = orm.relationship(back_populates="playlist", cascade="all, delete-orphan") #TODO: playlist versions
 
-    update_time: orm.Mapped[datetime]
+    modified_date: orm.Mapped[datetime | None]
+
+    # TODO: for playlist versioning
+    timestamp: orm.Mapped[datetime | None]
+
+    def add_video(self, video: Video):
+        session = Session()
+
+        if video in self.videos:
+            return video
+
+        session.add(PlaylistVideo(playlist_id=self.id, video_id=video.id))
+        session.commit()
+
+        return video
 
 
 def initialise():

@@ -136,29 +136,35 @@ def parse_channel(
         )
 
         log(f"parsed channel {channel.name} ({channel.id})")
-        # parse_playlists(channel_link, archive_config)
 
-        for entry in data["entries"]:
-            video = channel.add_or_update_video(
-                id=entry["id"],
-                title=entry["title"],
-                thumbnail_url=entry["thumbnails"][0]["url"],  # placeholder, get better quality thumbnail in parse_video_details
-                description=entry["description"],
-                duration=entry["duration"],
-                availability=entry["availability"],
-                views=entry["view_count"],
-            )
+        if archive_config.filters.playlists:
+            parse_playlists(channel, channel_link)
 
-            if channel.status == ChannelStatus.ACCEPTED:
-                video_min_update_time = datetime.utcnow() - timedelta(hours=archive_config.updating.video_update_gap_hours)
-                if not video.fully_parsed or video.update_time <= video_min_update_time:
-                    parse_video_details(video, archive_config)
-
-        log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
+        parse_videos(channel, data["entries"], archive_config)
 
         channel.set_updated()
 
     return channel
+
+
+def parse_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
+    for entry in videos["entries"]:
+        video = channel.add_or_update_video(
+            id=entry["id"],
+            title=entry["title"],
+            thumbnail_url=entry["thumbnails"][0]["url"],  # placeholder, get better quality thumbnail in parse_video_details
+            description=entry["description"],
+            duration=entry["duration"],
+            availability=entry["availability"],
+            views=entry["view_count"],
+        )
+
+        if channel.status == ChannelStatus.ACCEPTED:
+            video_min_update_time = datetime.utcnow() - timedelta(hours=archive.updating.video_update_gap_hours)
+            if not video.fully_parsed or video.update_time <= video_min_update_time:
+                parse_video_details(video, archive)
+
+        log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
 
 
 def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
@@ -221,18 +227,44 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
     return True
 
 
-def parse_playlists(channel_link: str, archive: cfg.ArchiveConfig) -> list[Playlist]:
+def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist]:
     ydl_opts = {
-        "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
+        "quiet": True,
+        "extract_flat": True,  # don't parse individual playlists
     }
-
-    log("parsing playlist")
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         try:
             data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
 
-            log(data)
+            playlists = data["entries"]
+
+            for playlist in playlists:
+                parse_playlist_details(playlist, channel)
+
+        except yt_dlp.utils.DownloadError as e:
+            log(e.msg)
+
+
+def parse_playlist_details(playlist, channel: Channel):
+    ydl_opts = {"quiet": True}
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        try:
+            data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist['id']}", download=False)
+
+            channel.add_or_update_playlist(
+                id=data["id"],
+                title=data["title"],
+                availability=data["availability"],
+                description=data["description"],
+                tags_list=data["tags"],
+                thumbnail_url=data["thumbnails"][0]["url"],
+                modified_date=data["modified_date"],
+                view_count=data["view_count"],
+                channel_id=channel.id,
+                videos=data["entries"],
+            )
         except yt_dlp.utils.DownloadError as e:
             log(e.msg)
 
