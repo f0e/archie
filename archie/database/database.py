@@ -270,7 +270,7 @@ class Channel(Base):
         duration: float,
         availability: str,
         views: int,
-        playlist: Playlist = None,
+        playlist: Playlist | None = None,
     ) -> Video:
         session = Session()
 
@@ -509,10 +509,14 @@ class Video(Base):
         return download
 
     def set_updated(self):
+        session = Session()
+
         self.update_time = datetime.utcnow()
 
         if not self.fully_parsed:
             self.fully_parsed = True
+
+        session.commit()
 
 
 class VideoDownload(Base):
