@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 
+import archie.api.api as api
 import archie.database.database as db
 from archie.config import CFG_PATH, ArchiveConfig, Config, load_config
 from archie.sources import youtube
@@ -162,6 +163,11 @@ def run():
                 while True:
                     # Twidles Thumbs
                     time.sleep(0.5)
+
+
+@archie.command()
+def serve():
+    api.run()
 
 
 @archie.group()
