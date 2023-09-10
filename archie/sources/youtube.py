@@ -142,9 +142,17 @@ def parse_channel(
 
         log(f"parsed channel {channel.name} ({channel.id})")
 
-        if archive_config.filters.playlists:
+        # parse playlists
+        to_parse_playlists = False
+        if not from_spider:
+            to_parse_playlists = archive_config.filters.parse_playlists
+        else:
+            to_parse_playlists = archive_config.spider.filters.parse_playlists
+
+        if to_parse_playlists:
             parse_playlists(channel, channel_link)
 
+        # parse videos
         parse_channel_videos(channel, data["entries"], archive_config)
 
         channel.set_updated()
@@ -215,7 +223,7 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
                     favorited=comment_data["is_favorited"],
                 )
 
-                if comment.channel:
+                if comment.channel and comment.channel.fully_parsed:
                     continue
 
                 if archive_config.spider.enabled:
@@ -232,14 +240,22 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
     return True
 
 
-def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist]:
+def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist] | None:
     ydl_opts = {
         "quiet": True,
         "extract_flat": True,  # don't parse individual playlists
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
-        data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
+        try:
+            data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if "This channel does not have a playlists tab" in e.msg:
+                log(f"channel {channel.name} has no playlists, skipping. ({channel_link})")
+                return None
+            else:
+                # AH?
+                raise e
 
         playlist_datas = data["entries"]
 
@@ -252,7 +268,10 @@ def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist]:
 
 
 def parse_playlist_details(playlist_id: str, channel: Channel) -> Playlist:
-    ydl_opts = {"quiet": True}
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,  # don't parse individual videos. also get videos that are unavailable
+    }
 
     with yt_dlp.YoutubeDL(ydl_opts) as yt:
         data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist_id}", download=False)

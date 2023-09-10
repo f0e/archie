@@ -169,6 +169,7 @@ class Channel(Base):
     notes: orm.Mapped[str | None]
 
     # archie data
+    fully_parsed: orm.Mapped[bool] = orm.mapped_column(default=False)
     update_time: orm.Mapped[datetime | None]
     update_status: orm.Mapped[ChannelStatus | None]
 
@@ -200,7 +201,7 @@ class Channel(Base):
 
     @classmethod
     def create_or_update(
-        self,
+        cls,
         status: ChannelStatus | None,
         id: str,
         name: str,
@@ -221,7 +222,7 @@ class Channel(Base):
         if existing_channel:
             changes = False
 
-            for var in self._tracked:
+            for var in cls._tracked:
                 if getattr(new_channel, var) != getattr(existing_channel, var):
                     changes = True
                     break
@@ -264,40 +265,25 @@ class Channel(Base):
     def add_or_update_video(
         self,
         id: str,
-        title: str,
-        thumbnail_url: str,
-        description: str,
-        duration: float,
-        availability: str,
-        views: int,
+        title: str | None,
+        thumbnail_url: str | None,
+        description: str | None,
+        duration: float | None,
+        availability: str | None,
+        views: int | None,
         playlist: Playlist | None = None,
     ) -> Video:
-        session = Session()
-
-        existing_video = utils.find(self.videos, lambda x: x.id == id)
-        new_video = existing_video or Video()
-
-        # set fields
-        new_video.id = id
-        new_video.title = title
-        new_video.thumbnail_url = thumbnail_url
-        new_video.description = description
-        new_video.duration = duration
-        new_video.availability = availability
-        new_video.views = views
-
-        if playlist:
-            existing_playlist = utils.find(new_video.playlists_in, lambda x: x.id == playlist.id)
-
-            if not existing_playlist:
-                new_video.playlists_in.append(playlist)
-
-        if not existing_video:
-            self.videos.append(new_video)
-
-        session.commit()
-
-        return new_video
+        return Video.create_or_update(
+            self.id,
+            id,
+            title,
+            thumbnail_url,
+            description,
+            duration,
+            availability,
+            views,
+            playlist,
+        )
 
     def add_or_update_playlist(
         self,
@@ -333,16 +319,30 @@ class Channel(Base):
         new_playlist.timestamp = datetime.utcnow()
 
         for video in videos:
-            self.add_or_update_video(
-                id=video["id"],
-                title=video["title"],
-                thumbnail_url=video["thumbnails"][0]["url"],
-                description=video["description"],
-                duration=video["duration"],
-                availability=video["availability"],
-                views=video["view_count"],
-                playlist=new_playlist,
-            )
+            if video["channel_id"] is None:  # deleted video etc
+                Video.create_or_update(
+                    id=video["id"],
+                    channel_id=None,
+                    title=None,
+                    thumbnail_url=None,
+                    description=None,
+                    duration=None,
+                    availability="unavailable",
+                    views=None,
+                    playlist=new_playlist,
+                )
+            else:
+                Video.create_or_update(
+                    id=video["id"],
+                    channel_id=video["channel_id"],
+                    title=video["title"],
+                    thumbnail_url=video["thumbnails"][0]["url"],
+                    description=video["description"],
+                    duration=video["duration"],
+                    availability=video["availability"],
+                    views=video["view_count"],
+                    playlist=new_playlist,
+                )
 
         if not existing_playlist:
             session.add(new_playlist)
@@ -356,6 +356,10 @@ class Channel(Base):
 
         self.update_time = datetime.utcnow()
         self.update_status = self.status
+
+        if not self.fully_parsed:
+            self.fully_parsed = True
+
         session.commit()
 
     def set_status(self, status: ChannelStatus):
@@ -391,11 +395,11 @@ class Video(Base):
     __tablename__ = "video"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
-    title: orm.Mapped[str]
-    thumbnail_url: orm.Mapped[str]
+    title: orm.Mapped[str | None]
+    thumbnail_url: orm.Mapped[str | None]
     description: orm.Mapped[str | None]
-    duration: orm.Mapped[int]
-    views: orm.Mapped[int]
+    duration: orm.Mapped[int | None]
+    views: orm.Mapped[int | None]
 
     fully_parsed: orm.Mapped[bool] = orm.mapped_column(default=False)
 
@@ -415,8 +419,8 @@ class Video(Base):
     playlists_in: orm.Mapped[list[Playlist]] = orm.relationship("Playlist", secondary="playlist_videos", back_populates="videos")
 
     # backref
-    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped[Channel] = orm.relationship(back_populates="videos")
+    channel_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("channel.id"))
+    channel: orm.Mapped[Channel | None] = orm.relationship(back_populates="videos")
 
     @staticmethod
     def get(id: str):
@@ -448,6 +452,48 @@ class Video(Base):
         session = Session()
         session.query(Video).update({Video.downloading: False})
         session.commit()
+
+    @classmethod
+    def create_or_update(
+        cls,
+        channel_id: str | None,
+        id: str,
+        title: str | None,
+        thumbnail_url: str | None,
+        description: str | None,
+        duration: float | None,
+        availability: str | None,
+        views: int | None,
+        playlist: Playlist | None = None,
+    ) -> Video:
+        session = Session()
+
+        existing_video = session.query(Video).filter_by(id=id).first()
+
+        new_video = existing_video or Video()
+
+        # set fields
+        new_video.id = id
+        new_video.channel_id = channel_id
+        new_video.title = title
+        new_video.thumbnail_url = thumbnail_url
+        new_video.description = description
+        new_video.duration = duration
+        new_video.availability = availability
+        new_video.views = views
+
+        if playlist:
+            existing_playlist = utils.find(new_video.playlists_in, lambda x: x.id == playlist.id)
+
+            if not existing_playlist:
+                new_video.playlists_in.append(playlist)
+
+        if not existing_video:
+            session.add(new_video)
+
+        session.commit()
+
+        return new_video
 
     def update_details(
         self, thumbnail_url: str, availability: str, categories_list: list[str], tags_list: list[str], timestamp: datetime
