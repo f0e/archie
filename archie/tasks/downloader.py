@@ -14,6 +14,8 @@ def log(*args, **kwargs):
 
 
 def init():
+    TEMP_DL_PATH.mkdir(parents=True, exist_ok=True)
+
     # remove deleted downloads
     for download in db.VideoDownload.get_downloads():
         path = Path(download.path)
