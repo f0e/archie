@@ -130,7 +130,7 @@ def add(name, channels):
                 return utils.log(f"Archive '{name}' not found.")
 
             if not add_channels_to_archive(config, name, channels):
-                return utils.log("Cancelled archive creation.")
+                return utils.log("Cancelled adding channel.")
 
     utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
     utils.log("To run the archive, use [dim]archie run[/dim]")
