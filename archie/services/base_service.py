@@ -9,9 +9,12 @@ class BaseService(ABC):
     def get_service_name(self):
         pass
 
-    @property
     @abstractmethod
-    def get_api(self):  # TODO: this probably shouldnt be public? add methods here?
+    def get_account_url_from_id(self, id: str):
+        pass
+
+    @abstractmethod
+    def get_account_id_from_url(self, link: str):
         pass
 
     @abstractmethod

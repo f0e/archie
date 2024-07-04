@@ -5,8 +5,9 @@ import click
 
 import archie.api.api as api
 import archie.database.database as db
-from archie.config import CFG_PATH, ArchiveConfig, Entity, load_config
+from archie.config import CFG_PATH, Account, ArchiveConfig, Config, Entity, load_config
 from archie.services.base_download import rich_progress
+from archie.services.base_service import BaseService
 from archie.services.youtube import YouTubeService
 from archie.utils import utils
 
@@ -20,29 +21,29 @@ def archie():
     pass
 
 
-# def add_account_to_archive(config: Config, entity: Entity, service: BaseService, account: str) -> bool:
-#     if validate_url(account):
-#         account_link = account
-#     else:
-#         account_link = service.get_api.get_account_url_from_id(account)
+def add_account_to_archive(config: Config, entity: Entity, service: BaseService, account: str) -> bool:
+    if utils.validate_url(account):
+        account_link = account
+    else:
+        account_link = service.get_account_url_from_id(account)
 
-#     account_id = service.get_api.get_account_id_from_url(account_link)
-#     if not account_id:
-#         return False
+    account_id = service.get_account_id_from_url(account_link)
+    if not account_id:
+        return False
 
-#     existing_account = utils.find(
-#         entity.accounts, lambda account: account.service == service.get_service_name and account.id == account_id
-#     )
-#     if existing_account:
-#         utils.log(f"Account already added to entity")
-#         return False
+    existing_account = utils.find(
+        entity.accounts, lambda account: account.service == service.get_service_name and account.id == account_id
+    )
+    if existing_account:
+        utils.log("Account already added to entity")
+        return False
 
-#     entity.accounts.append(Account(service=service.get_service_name, id=account_id))
-#     utils.log(f"Added account")
+    entity.accounts.append(Account(service=service.get_service_name, id=account_id))
+    utils.log("Added account")
 
-#     config.save()
+    config.save()
 
-#     return True
+    return True
 
 
 @archie.command()
@@ -118,8 +119,8 @@ def add_entity_account(archive_name, entity_name, service, account):
             if not entity:
                 return utils.log(f"Entity '{entity_name}' not found.")
 
-            # if not add_account_to_archive(config, entity, services[service], account):
-            #     return utils.log("Account not added")
+            if not add_account_to_archive(config, entity, services[service], account):
+                return utils.log("Account not added")
 
     utils.log(f"Added account to entity '{entity_name}' in archive '{archive_name}'.")
 

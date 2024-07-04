@@ -26,9 +26,11 @@ class YouTubeService(BaseService):
     def get_service_name(self):
         return "YouTube"
 
-    @property
-    def get_api(self):
-        return self.api
+    def get_account_url_from_id(self, id: str):
+        return self.api.get_channel_url_from_id(id)
+
+    def get_account_id_from_url(self, link: str):
+        return self.api.get_channel_id_from_url(link)
 
     def run(self, config: Config):
         log("Starting")
