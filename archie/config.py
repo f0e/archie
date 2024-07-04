@@ -47,7 +47,7 @@ class SpiderOptions(BaseModel):
 
 class ArchiveConfig(BaseModel):
     name: str
-    channels: list[str]
+    channels: list[str] = []
 
     filters: FilterOptions = FilterOptions()
     updating: UpdateOptions = UpdateOptions()
