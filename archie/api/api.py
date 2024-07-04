@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+
 import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+import archie.database.database as db
 
 from .routes import router
-import archie.database.database as db
 
 DEBUG = True
 

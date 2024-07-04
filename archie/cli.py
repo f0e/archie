@@ -52,7 +52,7 @@ def add_channels_to_archive(config: Config, archive_name: str, channels: list[st
                 continue
 
             channel_ids.append(channel_id)
-            utils.log(f"Added channel {data["channel"]}")
+            utils.log(f"Added channel {data['channel']}")
         except Exception:
             utils.log(f"Failed to fetch channel {channelLink}, skipping.")
 
@@ -76,9 +76,7 @@ def create(name):
     """
 
     def print_error_and_examples(msg: str):
-        utils.log(
-            msg + " To create an archive, enter a name."
-        )
+        utils.log(msg + " To create an archive, enter a name.")
         utils.log("e.g. [dim]archie create my-archive[/dim]")
 
     if not name:
