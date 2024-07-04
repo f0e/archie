@@ -13,7 +13,7 @@ def log(*args, **kwargs):
 
 
 def module_log(module: str, module_style: str | Style | None, *args, **kwargs):
-    console.print(f"[{module_style}]\[{module}][/{module_style}] " + " ".join(map(str, args)), **kwargs)
+    console.print(f"[{module_style}]\\[{module}][/{module_style}] " + " ".join(map(str, args)), **kwargs)
 
 
 def retryable(function, fail_message: str, max_retries=5, retry_delay_sec=5, on_exception=None):

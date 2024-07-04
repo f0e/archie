@@ -2,7 +2,10 @@
 name = "archie"
 version = "0.1.0"
 description = ""
-authors = ["f0e <7321764+f0e@users.noreply.github.com>"]
+authors = [
+  "f0e <7321764+f0e@users.noreply.github.com>",
+  "newgan <53710132+newgan@users.noreply.github.com>",
+]
 readme = "readme.md"
 repository = "https://github.com/f0e/archie"
 classifiers = [
@@ -17,10 +20,11 @@ click = "^8.1.7"
 yt-dlp = "^2023.7.6"
 sqlalchemy = "^2.0.20"
 requests = "^2.31.0"
-dacite = "^1.8.1"
 pydantic = "^2.3.0"
 pyyaml = "^6.0.1"
 rich = "^13.5.2"
+fastapi = "^0.103.1"
+uvicorn = { extras = ["standard"], version = "^0.23.2" }
 
 [tool.poetry.group.dev.dependencies]
 types-requests = "^2.31.0.2"
@@ -28,6 +32,7 @@ types-pyyaml = "^6.0.12.11"
 
 [tool.poetry.scripts]
 archie = 'archie.cli:archie'
+serve = 'archie.debug_server:start'
 
 [tool.black]
 line-length = 130

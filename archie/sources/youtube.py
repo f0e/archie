@@ -1,4 +1,5 @@
 import json
+import shutil
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ from rich.progress import (
 
 import archie.config as cfg
 from archie import console
-from archie.database.database import Archive, Channel, ChannelStatus, Video
+from archie.database.database import Archive, Channel, ChannelStatus, Playlist, Video
 from archie.sources import filter
 from archie.utils import utils
 
@@ -40,9 +41,14 @@ def log(*args, **kwargs):
         utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
 
 
-def debug_write(yt, data, filename):
+def debug_write_yt(yt, data, filename):
     with open(f"{filename}.json", "w") as out_file:
         out_file.write(json.dumps(yt.sanitize_info(data)))
+
+
+def debug_write(data, filename):
+    with open(f"{filename}.json", "w") as out_file:
+        out_file.write(json.dumps(data))
 
 
 def get_data(channelLink: str):
@@ -136,27 +142,42 @@ def parse_channel(
 
         log(f"parsed channel {channel.name} ({channel.id})")
 
-        for entry in data["entries"]:
-            video = channel.add_or_update_video(
-                id=entry["id"],
-                title=entry["title"],
-                thumbnail_url=entry["thumbnails"][0]["url"],  # placeholder, get better quality thumbnail in parse_video_details
-                description=entry["description"],
-                duration=entry["duration"],
-                availability=entry["availability"],
-                views=entry["view_count"],
-            )
+        # parse playlists
+        to_parse_playlists = False
+        if not from_spider:
+            to_parse_playlists = archive_config.filters.parse_playlists
+        else:
+            to_parse_playlists = archive_config.spider.filters.parse_playlists
 
-            if channel.status == ChannelStatus.ACCEPTED:
-                video_min_update_time = datetime.utcnow() - timedelta(hours=archive_config.updating.video_update_gap_hours)
-                if not video.fully_parsed or video.update_time <= video_min_update_time:
-                    parse_video_details(video, archive_config)
+        if to_parse_playlists:
+            parse_playlists(channel, channel_link)
 
-        log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
+        # parse videos
+        parse_channel_videos(channel, data["entries"], archive_config)
 
         channel.set_updated()
 
     return channel
+
+
+def parse_channel_videos(channel: Channel, videos, archive: cfg.ArchiveConfig):
+    for entry in videos:
+        video = channel.add_or_update_video(
+            id=entry["id"],
+            title=entry["title"],
+            thumbnail_url=entry["thumbnails"][0]["url"],  # placeholder, get better quality thumbnail in parse_video_details
+            description=entry["description"],
+            duration=entry["duration"],
+            availability=entry["availability"],
+            views=entry["view_count"],
+        )
+
+        if channel.status == ChannelStatus.ACCEPTED:
+            video_min_update_time = datetime.utcnow() - timedelta(hours=archive.updating.video_update_gap_hours)
+            if not video.fully_parsed or (video.update_time and video.update_time <= video_min_update_time):
+                parse_video_details(video, archive)
+
+    log(f"parsed {len(channel.videos)} videos in channel {channel.name} ({channel.id})")
 
 
 def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
@@ -202,7 +223,7 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
                     favorited=comment_data["is_favorited"],
                 )
 
-                if comment.channel:
+                if comment.channel and comment.channel.fully_parsed:
                     continue
 
                 if archive_config.spider.enabled:
@@ -217,6 +238,56 @@ def parse_video_details(video: Video, archive_config: cfg.ArchiveConfig):
         log(f"parsed video details, got {len(video.comments)} comments")
 
     return True
+
+
+def parse_playlists(channel: Channel, channel_link: str) -> list[Playlist] | None:
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,  # don't parse individual playlists
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        try:
+            data = yt.extract_info(f"https://www.youtube.com/{channel_link}/playlists", download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if "This channel does not have a playlists tab" in e.msg:
+                log(f"channel {channel.name} has no playlists, skipping. ({channel_link})")
+                return None
+            else:
+                # AH?
+                raise e
+
+        playlist_datas = data["entries"]
+
+        for playlist_data in playlist_datas:
+            playlist = parse_playlist_details(playlist_data["id"], channel)
+
+            log(f"parsed playlist {playlist.title}, {len(playlist.videos)} videos found ({playlist.id})")
+
+    return channel.playlists
+
+
+def parse_playlist_details(playlist_id: str, channel: Channel) -> Playlist:
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,  # don't parse individual videos. also get videos that are unavailable
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as yt:
+        data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist_id}", download=False)
+
+        return channel.add_or_update_playlist(
+            id=data["id"],
+            title=data["title"],
+            availability=data["availability"],
+            description=data["description"],
+            tags_list=data["tags"],
+            thumbnail_url=data["thumbnails"][0]["url"],
+            modified_date=data["modified_date"],
+            view_count=data["view_count"],
+            channel_id=channel.id,
+            videos=data["entries"],
+        )
 
 
 class YTProgressData:
@@ -351,7 +422,7 @@ def download_video(video: Video, download_folder: Path) -> DownloadedVideo | Non
         else:
             # move completed download
             final_path.parent.mkdir(parents=True, exist_ok=True)
-            downloaded_path.rename(final_path)
+            shutil.move(downloaded_path, final_path)
 
         return DownloadedVideo(
             path=final_path,

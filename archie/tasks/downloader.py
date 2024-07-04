@@ -14,6 +14,8 @@ def log(*args, **kwargs):
 
 
 def init():
+    TEMP_DL_PATH.mkdir(parents=True, exist_ok=True)
+
     # remove deleted downloads
     for download in db.VideoDownload.get_downloads():
         path = Path(download.path)
@@ -26,7 +28,8 @@ def init():
     db.Video.reset_download_states()
 
     # remove temp downloads (for safety, resuming causes issues sometimes)
-    shutil.rmtree(TEMP_DL_PATH)
+    if TEMP_DL_PATH.exists():
+        shutil.rmtree(TEMP_DL_PATH)
 
 
 download_counter = 0
@@ -61,7 +64,7 @@ def download_videos(config: Config):
                 archive_config = c
                 break
 
-        assert archive_config
+        assert archive_config, f"FATAL ERROR: archive {archive_name} no longer exists."
 
         log(f"downloading video {video.title} ({video.id})")
 

@@ -1,8 +1,10 @@
 import threading
 import time
+from pathlib import Path
 
 import click
 
+import archie.api.api as api
 import archie.database.database as db
 from archie.config import CFG_PATH, ArchiveConfig, Config, load_config
 from archie.sources import youtube
@@ -16,9 +18,9 @@ def archie():
     pass
 
 
-def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> bool:
+def add_channels_to_archive(config: Config, archive_name: str, channels: list[str]) -> bool:
     # check if name is a link
-    if validate_url(name):
+    if validate_url(archive_name):
         if not click.prompt("Archive name is a URL, are you sure you want to continue? (y/n)", type=bool):
             return False
 
@@ -26,8 +28,11 @@ def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> b
 
     utils.log(f"Validating {len(channels)} channels...")
 
-    # get existing archive (if there is one)
-    archive = utils.find(config.archives, lambda archive: archive.name == name)
+    # get existing archive
+    archive = utils.find(config.archives, lambda archive: archive.name == archive_name)
+    if not archive:
+        utils.log(f"Failed to find archive {archive_name}")
+        return False
 
     # validate channels and get ids
     channel_ids: list[str] = []
@@ -42,11 +47,12 @@ def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> b
             data = youtube.get_data(channelLink)
             channel_id = data["channel_id"]
 
-            if channel_id in channel_ids or (archive and channel_id in archive.channels):
+            if channel_id in channel_ids or channel_id in archive.channels:
                 utils.log(f"Skipping duplicate channel {channel}")
                 continue
 
             channel_ids.append(channel_id)
+            utils.log(f"Added channel {data['channel']}")
         except Exception:
             utils.log(f"Failed to fetch channel {channelLink}, skipping.")
 
@@ -54,12 +60,8 @@ def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> b
         utils.log("No valid channels were found.")
         return False
 
-    if archive:
-        # add channels to existing archive
-        archive.channels = archive.channels + channel_ids
-    else:
-        # create new archive
-        config.archives.append(ArchiveConfig(name=name, channels=channel_ids))
+    # add channels to existing archive
+    archive.channels = archive.channels + channel_ids
 
     config.save()
 
@@ -68,24 +70,17 @@ def add_channels_to_archive(config: Config, name: str, channels: list[str]) -> b
 
 @archie.command()
 @click.argument("name", required=False)
-@click.argument("channels", nargs=-1, required=False)
-def create(name, channels):
+def create(name):
     """
     Creates a new archive
     """
 
     def print_error_and_examples(msg: str):
-        utils.log(
-            msg + " To create an archive, enter a name and a list of YouTube channel links or IDs after the create command."
-        )
-        utils.log("e.g. [dim]create my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/dim]")
-        utils.log("or [dim]archie create my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/dim]")
+        utils.log(msg + " To create an archive, enter a name.")
+        utils.log("e.g. [dim]archie create my-archive[/dim]")
 
     if not name:
         return print_error_and_examples("No name provided.")
-
-    if len(channels) == 0:
-        return print_error_and_examples("No channels provided.")
 
     with db.connect():
         with load_config() as config:
@@ -93,11 +88,12 @@ def create(name, channels):
             if any(archive.name == name for archive in config.archives):
                 return utils.log(f"An archive already exists with the name '{name}'.")
 
-            if not add_channels_to_archive(config, name, channels):
-                return utils.log("Cancelled archive creation.")
+            # create new archive
+            config.archives.append(ArchiveConfig(name=name))
+            config.save()
 
     utils.log(f"Created archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
-    utils.log("To run the archive, use [dim]archie run[/dim]")
+    utils.log(f"To add channels to the archive, use [dim]archie add {name}[/dim]")
 
 
 @archie.command()
@@ -128,9 +124,9 @@ def add(name, channels):
                 return utils.log(f"Archive '{name}' not found.")
 
             if not add_channels_to_archive(config, name, channels):
-                return utils.log("Cancelled archive creation.")
+                return utils.log("Cancelled adding channel.")
 
-    utils.log(f"Added channels to archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
+    utils.log(f"Added channels to archive '{name}'.")
     utils.log("To run the archive, use [dim]archie run[/dim]")
 
 
@@ -145,6 +141,12 @@ def run():
                 if len(config.archives) == 0:
                     return utils.log("No archives created, create one using [dim]create [archive name] [channel(s)][/dim]")
 
+                for archive in config.archives:
+                    if not Path(archive.downloads.download_path).is_absolute():
+                        return utils.log(
+                            f"The download path '{archive.downloads.download_path}' specified in archive '{archive.name}' is not a valid path. Please add a proper path and try again."
+                        )
+
                 downloader.init()
 
                 for i in range(5):
@@ -155,6 +157,11 @@ def run():
                 while True:
                     # Twidles Thumbs
                     time.sleep(0.5)
+
+
+@archie.command()
+def serve():
+    api.run()
 
 
 @archie.group()
@@ -270,3 +277,7 @@ def filter(name: str):
     #                     break
 
     #         utils.log("Quitting.")
+
+
+if __name__ == "__main__":
+    archie()

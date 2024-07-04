@@ -16,7 +16,7 @@ TEMP_DL_PATH = ARCHIE_PATH / "temp-downloads"
 
 
 class FilterOptions(BaseModel):
-    pass
+    parse_playlists: bool = True
 
 
 class SpiderFilterOptions(BaseModel):
@@ -25,9 +25,10 @@ class SpiderFilterOptions(BaseModel):
 
     filter_verified: bool = False
     filter_livestreams: bool = True
-
     block_no_videos: bool = False
     max_videos: int = 300
+
+    parse_playlists: bool = True
 
 
 class UpdateOptions(BaseModel):
@@ -46,9 +47,9 @@ class SpiderOptions(BaseModel):
 
 class ArchiveConfig(BaseModel):
     name: str
-    channels: list[str]
+    channels: list[str] = []
 
-    # filters: FilterOptions = FilterOptions()
+    filters: FilterOptions = FilterOptions()
     updating: UpdateOptions = UpdateOptions()
     downloads: DownloadOptions = DownloadOptions()
     spider: SpiderOptions = SpiderOptions()
