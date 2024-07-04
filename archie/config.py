@@ -45,9 +45,21 @@ class SpiderOptions(BaseModel):
     filters: SpiderFilterOptions = SpiderFilterOptions()
 
 
+class Account(BaseModel):
+    service: str
+    id: str
+
+
+class Entity(BaseModel):
+    name: str
+    accounts: list[Account] = []
+
+    # TODO: more fields, copy from rym?
+
+
 class ArchiveConfig(BaseModel):
     name: str
-    channels: list[str] = []
+    entities: list[Entity] = []
 
     filters: FilterOptions = FilterOptions()
     updating: UpdateOptions = UpdateOptions()

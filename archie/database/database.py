@@ -5,7 +5,6 @@ import threading
 import typing
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy import orm
@@ -28,10 +27,6 @@ Session = orm.scoped_session(session_factory)
 initialised = False
 
 download_lock = threading.Lock()
-
-###
-# Channel
-###
 
 
 class Base(orm.DeclarativeBase):
@@ -58,100 +53,23 @@ class Base(orm.DeclarativeBase):
         return f"<{self.__class__.__name__} {id(self)}>"
 
 
-class ChannelStatus(enum.Enum):
+class AccountStatus(enum.Enum):
     QUEUED = 0
     ACCEPTED = 1
     REJECTED = 2
 
 
-class Archive(Base):
-    __tablename__ = "archive"
-
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
-    name: orm.Mapped[str]
-
-    channels: orm.Mapped[list[Channel]] = orm.relationship("Channel", secondary="archive_channels", back_populates="archives")
-
-    @staticmethod
-    def get(name: str):
-        session = Session()
-
-        archive = session.query(Archive).filter(Archive.name == name).first()
-
-        # create the archive if it doesn't exist yet
-        if not archive:
-            archive = Archive(name=name)
-            session.add(archive)
-            session.commit()
-
-        return archive
-
-    def add_channel(self, channel: Channel, from_spider: bool):
-        session = Session()
-
-        if channel in self.channels:
-            return channel
-
-        session.add(ArchiveChannel(archive_id=self.id, channel_id=channel.id, from_spider=from_spider))
-        session.commit()
-
-        return channel
-
-    def get_next_of_status(self, status: ChannelStatus, updated_before: datetime | None = None):
-        session = Session()
-
-        return (
-            session.query(Channel)
-            .filter(Channel.archives.any(id=self.id))
-            .filter(Channel.status == status)
-            .filter(
-                sa.or_(
-                    Channel.update_time.is_(None),
-                    Channel.update_time <= updated_before,  # todo: this fails when updated_before is None
-                    Channel.update_status != Channel.status,
-                )
-            )
-            .first()
-        )
-
-    def get_queued_channel(self, index: int):
-        session = Session()
-
-        return (
-            session.query(Channel)
-            .filter(Channel.archives.any(id=self.id))
-            .filter(Channel.status == ChannelStatus.QUEUED)
-            .offset(index)
-            .first()
-        )
+###
+# YouTube
+###
 
 
-class ArchiveChannel(Base):
-    __tablename__ = "archive_channels"
-
-    archive_id = orm.mapped_column(sa.ForeignKey("archive.id"), primary_key=True)
-    channel_id = orm.mapped_column(sa.ForeignKey("channel.id"), primary_key=True)
-
-    from_spider: orm.Mapped[bool]
-
-
-class Person(Base):
-    __tablename__ = "person"
-
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
-    name: orm.Mapped[str]
-    country: orm.Mapped[str]
-
-    # relationships
-    channels: orm.Mapped[list[Channel]] = orm.relationship(back_populates="person", cascade="all, delete-orphan")
-
-
-class Channel(Base):
-    __tablename__ = "channel"
+class YouTubeAccount(Base):
+    __tablename__ = "youtube_account"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
 
-    status: orm.Mapped[ChannelStatus]
+    status: orm.Mapped[AccountStatus]
 
     # tracked
     name: orm.Mapped[str]
@@ -171,19 +89,21 @@ class Channel(Base):
     # archie data
     fully_parsed: orm.Mapped[bool] = orm.mapped_column(default=False)
     update_time: orm.Mapped[datetime | None]
-    update_status: orm.Mapped[ChannelStatus | None]
+    update_status: orm.Mapped[AccountStatus | None]
 
     # relationships
-    versions: orm.Mapped[list[ChannelVersion]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-    comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-    videos: orm.Mapped[list[Video]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-    playlists: orm.Mapped[list[Playlist]] = orm.relationship(back_populates="channel", cascade="all, delete-orphan")
-
-    # backref
-    person_id: orm.Mapped[int | None] = orm.mapped_column(sa.ForeignKey("person.id"))
-    person: orm.Mapped[Person | None] = orm.relationship(back_populates="channels")
-
-    archives: orm.Mapped[list[Archive]] = orm.relationship("Archive", secondary="archive_channels", back_populates="channels")
+    versions: orm.Mapped[list[YouTubeAccountVersion]] = orm.relationship(
+        back_populates="youtube_account", cascade="all, delete-orphan"
+    )
+    comments: orm.Mapped[list[YouTubeVideoComment]] = orm.relationship(
+        back_populates="youtube_account", cascade="all, delete-orphan"
+    )
+    youtube_videos: orm.Mapped[list[YouTubeVideo]] = orm.relationship(
+        back_populates="youtube_account", cascade="all, delete-orphan"
+    )
+    playlists: orm.Mapped[list[YouTubePlaylist]] = orm.relationship(
+        back_populates="youtube_account", cascade="all, delete-orphan"
+    )
 
     # indexes
     __table_args__ = (sa.Index("idx_status", "status"),)
@@ -192,32 +112,30 @@ class Channel(Base):
     def get(id: str, fully_parsed: bool):
         session = Session()
 
-        builder = session.query(Channel).filter(Channel.id == id)
+        builder = session.query(YouTubeAccount).filter(YouTubeAccount.id == id)
 
         if fully_parsed:
-            builder = builder.filter(Channel.update_time.is_not(None))
+            builder = builder.filter(YouTubeAccount.update_time.is_not(None))
 
         return builder.first()
 
     @classmethod
     def create_or_update(
         cls,
-        status: ChannelStatus | None,
+        status: AccountStatus | None,
         id: str,
         name: str,
         avatar_url: str | None,
         banner_url: str | None,
         description: str,
         subscribers: int,
-        tags_list: list[str],
+        tags: list[str],
         verified: bool,
-    ) -> Channel:
+    ) -> YouTubeAccount:
         session = Session()
 
-        tags = ",".join(tags_list)
-
-        existing_channel = session.query(Channel).filter_by(id=id).first()
-        new_channel = existing_channel or Channel()
+        existing_channel = session.query(YouTubeAccount).filter_by(id=id).first()
+        new_channel = existing_channel or YouTubeAccount()
 
         if existing_channel:
             changes = False
@@ -231,7 +149,7 @@ class Channel(Base):
                 log(f"storing history for channel {name} ({id})")
 
                 session.add(
-                    ChannelVersion(
+                    YouTubeAccountVersion(
                         channel_id=existing_channel.id,
                         name=existing_channel.name,
                         avatar_url=existing_channel.avatar_url,
@@ -271,9 +189,9 @@ class Channel(Base):
         duration: float | None,
         availability: str | None,
         views: int | None,
-        playlist: Playlist | None = None,
-    ) -> Video:
-        return Video.create_or_update(
+        playlist: YouTubePlaylist | None = None,
+    ) -> YouTubeVideo:
+        return YouTubeVideo.create_or_update(
             self.id,
             id,
             title,
@@ -303,7 +221,7 @@ class Channel(Base):
         session = Session()
 
         existing_playlist = utils.find(self.playlists, lambda x: x.id == id)
-        new_playlist = existing_playlist or Playlist()
+        new_playlist = existing_playlist or YouTubePlaylist()
 
         # TODO: handle playlist changes
 
@@ -320,7 +238,7 @@ class Channel(Base):
 
         for video in videos:
             if video["channel_id"] is None:  # deleted video etc
-                Video.create_or_update(
+                YouTubeVideo.create_or_update(
                     id=video["id"],
                     channel_id=None,
                     title=None,
@@ -332,7 +250,7 @@ class Channel(Base):
                     playlist=new_playlist,
                 )
             else:
-                Video.create_or_update(
+                YouTubeVideo.create_or_update(
                     id=video["id"],
                     channel_id=video["channel_id"],
                     title=video["title"],
@@ -362,20 +280,20 @@ class Channel(Base):
 
         session.commit()
 
-    def set_status(self, status: ChannelStatus):
+    def set_status(self, status: AccountStatus):
         session = Session()
 
         self.status = status
         session.commit()
 
 
-class ChannelVersion(Base):
-    __tablename__ = "channel_version"
+class YouTubeAccountVersion(Base):
+    __tablename__ = "youtube_account_version"
 
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, autoincrement=True)
 
-    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped[Channel] = orm.relationship(back_populates="versions")
+    youtube_account_id_fk: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("youtube_account.id"))
+    youtube_account: orm.Mapped[YouTubeAccount] = orm.relationship(back_populates="versions")
 
     name: orm.Mapped[str]
     avatar_url: orm.Mapped[str | None]
@@ -386,13 +304,8 @@ class ChannelVersion(Base):
     update_time: orm.Mapped[datetime]
 
 
-###
-# Video
-###
-
-
-class Video(Base):
-    __tablename__ = "video"
+class YouTubeVideo(Base):
+    __tablename__ = "youtube_video"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     title: orm.Mapped[str | None]
@@ -414,43 +327,47 @@ class Video(Base):
     update_time: orm.Mapped[datetime | None]
 
     # relationships
-    comments: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
-    downloads: orm.Mapped[list[VideoDownload]] = orm.relationship(back_populates="video", cascade="all, delete-orphan")
-    playlists_in: orm.Mapped[list[Playlist]] = orm.relationship("Playlist", secondary="playlist_videos", back_populates="videos")
+    comments: orm.Mapped[list[YouTubeVideoComment]] = orm.relationship(
+        back_populates="youtube_video", cascade="all, delete-orphan"
+    )
+    # downloads: orm.Mapped[list[ContentDownload]] = orm.relationship(back_populates="youtube_video", cascade="all, delete-orphan")
+    playlists_in: orm.Mapped[list[YouTubePlaylist]] = orm.relationship(
+        "YouTubePlaylist", secondary="youtube_playlist_video", back_populates="youtube_videos"
+    )
 
     # backref
-    channel_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped[Channel | None] = orm.relationship(back_populates="videos")
+    youtube_account_id_fk: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("youtube_account.id"))
+    youtube_account: orm.Mapped[YouTubeAccount | None] = orm.relationship(back_populates="youtube_videos")
 
     @staticmethod
     def get(id: str):
         session = Session()
-        return session.query(Video).filter(Video.id == id).first()
+        return session.query(YouTubeVideo).filter(YouTubeVideo.id == id).first()
 
-    @staticmethod
-    def get_next_download():
-        with download_lock:  # need to wait for other threads to set downloading=True
-            session = Session()
+    # @staticmethod
+    # def get_next_download():
+    #     with download_lock:  # need to wait for other threads to set downloading=True
+    #         session = Session()
 
-            video = (
-                session.query(Video)
-                .where(Video.downloading == sa.false())
-                .join(VideoDownload, isouter=True)
-                .join(Channel)
-                .where(VideoDownload.format.is_(None), Channel.status == ChannelStatus.ACCEPTED)
-                .first()
-            )
+    #         video = (
+    #             session.query(YouTubeVideo)
+    #             .where(YouTubeVideo.downloading == sa.false())
+    #             .join(ContentDownload, isouter=True)
+    #             .join(YouTubeAccount)
+    #             .where(ContentDownload.format.is_(None), YouTubeAccount.status == AccountStatus.ACCEPTED)
+    #             .first()
+    #         )
 
-            if video:
-                video.downloading = True
-                session.commit()
+    #         if video:
+    #             video.downloading = True
+    #             session.commit()
 
-            return video
+    #         return video
 
     @staticmethod
     def reset_download_states():
         session = Session()
-        session.query(Video).update({Video.downloading: False})
+        session.query(YouTubeVideo).update({YouTubeVideo.downloading: False})
         session.commit()
 
     @classmethod
@@ -464,13 +381,13 @@ class Video(Base):
         duration: float | None,
         availability: str | None,
         views: int | None,
-        playlist: Playlist | None = None,
-    ) -> Video:
+        playlist: YouTubePlaylist | None = None,
+    ) -> YouTubeVideo:
         session = Session()
 
-        existing_video = session.query(Video).filter_by(id=id).first()
+        existing_video = session.query(YouTubeVideo).filter_by(id=id).first()
 
-        new_video = existing_video or Video()
+        new_video = existing_video or YouTubeVideo()
 
         # set fields
         new_video.id = id
@@ -522,7 +439,7 @@ class Video(Base):
         session = Session()
 
         existing_comment = utils.find(self.comments, lambda x: x.id == id)
-        new_comment = existing_comment or VideoComment()
+        new_comment = existing_comment or YouTubeVideoComment()
 
         # set fields
         new_comment.video_id = self.id
@@ -542,17 +459,17 @@ class Video(Base):
 
         return new_comment
 
-    def add_download(self, path: Path, format: str):
-        session = Session()
+    # def add_download(self, path: Path, format: str):
+    #     session = Session()
 
-        self.downloading = False
+    #     self.downloading = False
 
-        download = VideoDownload(path=str(path), format=format)
-        self.downloads.append(download)
+    #     download = ContentDownload(path=str(path), format=format)
+    #     self.downloads.append(download)
 
-        session.commit()
+    #     session.commit()
 
-        return download
+    #     return download
 
     def set_updated(self):
         session = Session()
@@ -565,12 +482,8 @@ class Video(Base):
         session.commit()
 
 
-class VideoDownload(Base):
-    __tablename__ = "video_download"
-
-    # backref
-    video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
-    video: orm.Mapped[Video] = orm.relationship(back_populates="downloads")
+class ContentDownload(Base):
+    __tablename__ = "content_download"
 
     format: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     path: orm.Mapped[str]
@@ -578,7 +491,7 @@ class VideoDownload(Base):
     @staticmethod
     def get_downloads():
         session = Session()
-        yield from session.query(VideoDownload)
+        yield from session.query(ContentDownload)
 
     def delete(self):
         session = Session()
@@ -588,12 +501,12 @@ class VideoDownload(Base):
 
 
 ###
-# Comment
+# YouTube Comment
 ###
 
 
-class VideoComment(Base):
-    __tablename__ = "video_comment"
+class YouTubeVideoComment(Base):
+    __tablename__ = "youtube_video_comment"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     text: orm.Mapped[str]
@@ -604,29 +517,27 @@ class VideoComment(Base):
     channel_avatar_url: orm.Mapped[str]
 
     # relationships
-    replies: orm.Mapped[list[VideoComment]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
+    replies: orm.Mapped[list[YouTubeVideoComment]] = orm.relationship(back_populates="parent", remote_side=[id], uselist=True)
     # uselist=True cause for some reason it doesn't always use a list
 
     # backref
-    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped[Channel] = orm.relationship(back_populates="comments")
-
-    video_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("video.id"))
-    video: orm.Mapped[Video] = orm.relationship(back_populates="comments")
-
-    parent_id: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("video_comment.id"))
-    parent: orm.Mapped[VideoComment | None] = orm.relationship(back_populates="replies")
+    youtube_account_id_fk: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("youtube_account.id"))
+    youtube_account: orm.Mapped[YouTubeAccount] = orm.relationship(back_populates="comments")
+    youtube_video_id_fk: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("youtube_video.id"))
+    youtube_video: orm.Mapped[YouTubeVideo] = orm.relationship(back_populates="comments")
+    parent_id_fk: orm.Mapped[str | None] = orm.mapped_column(sa.ForeignKey("youtube_video_comment.id"))
+    parent: orm.Mapped[YouTubeVideoComment | None] = orm.relationship(back_populates="replies")
 
 
-class PlaylistVideo(Base):
-    __tablename__ = "playlist_videos"
+class YouTubePlaylistVideo(Base):
+    __tablename__ = "youtube_playlist_video"
 
-    playlist_id = orm.mapped_column(sa.ForeignKey("playlist.id"), primary_key=True)
-    video_id = orm.mapped_column(sa.ForeignKey("video.id"), primary_key=True)
+    playlist_id = orm.mapped_column(sa.ForeignKey("youtube_playlist.id"), primary_key=True)
+    video_id = orm.mapped_column(sa.ForeignKey("youtube_video.id"), primary_key=True)
 
 
-class Playlist(Base):
-    __tablename__ = "playlist"
+class YouTubePlaylist(Base):
+    __tablename__ = "youtube_playlist"
 
     id: orm.Mapped[str] = orm.mapped_column(primary_key=True)
     title: orm.Mapped[str]
@@ -637,11 +548,13 @@ class Playlist(Base):
     tags: orm.Mapped[str | None]
 
     # relationships
-    videos: orm.Mapped[list[Video]] = orm.relationship("Video", secondary="playlist_videos", back_populates="playlists_in")
+    youtube_videos: orm.Mapped[list[YouTubeVideo]] = orm.relationship(
+        "YouTubeVideo", secondary="youtube_playlist_video", back_populates="playlists_in"
+    )
 
     # backrefs
-    channel_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("channel.id"))
-    channel: orm.Mapped[Channel] = orm.relationship(back_populates="playlists")
+    youtube_account_id: orm.Mapped[str] = orm.mapped_column(sa.ForeignKey("youtube_account.id"))
+    youtube_account: orm.Mapped[YouTubeAccount] = orm.relationship(back_populates="playlists")
 
     # versions: orm.Mapped[list[PlaylistVersion]] = orm.relationship(back_populates="playlist", cascade="all, delete-orphan") #TODO: playlist versions
 
@@ -650,13 +563,13 @@ class Playlist(Base):
     # TODO: for playlist versioning
     timestamp: orm.Mapped[datetime | None]
 
-    def add_video(self, video: Video):
+    def add_video(self, video: YouTubeVideo):
         session = Session()
 
         if video in self.videos:
             return video
 
-        session.add(PlaylistVideo(playlist_id=self.id, video_id=video.id))
+        session.add(YouTubePlaylistVideo(playlist_id=self.id, video_id=video.id))
         session.commit()
 
         return video

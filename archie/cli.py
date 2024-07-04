@@ -1,4 +1,3 @@
-import threading
 import time
 from pathlib import Path
 
@@ -6,11 +5,14 @@ import click
 
 import archie.api.api as api
 import archie.database.database as db
-from archie.config import CFG_PATH, ArchiveConfig, Config, load_config
-from archie.sources import youtube
-from archie.tasks import downloader, parser
+from archie.config import CFG_PATH, ArchiveConfig, Entity, load_config
+from archie.services.base_download import rich_progress
+from archie.services.youtube import YouTubeService
 from archie.utils import utils
-from archie.utils.utils import validate_url
+
+services = {
+    "youtube": YouTubeService(),
+}
 
 
 @click.group()
@@ -18,116 +20,108 @@ def archie():
     pass
 
 
-def add_channels_to_archive(config: Config, archive_name: str, channels: list[str]) -> bool:
-    # check if name is a link
-    if validate_url(archive_name):
-        if not click.prompt("Archive name is a URL, are you sure you want to continue? (y/n)", type=bool):
-            return False
+# def add_account_to_archive(config: Config, entity: Entity, service: BaseService, account: str) -> bool:
+#     if validate_url(account):
+#         account_link = account
+#     else:
+#         account_link = service.get_api.get_account_url_from_id(account)
 
-    # todo: check if name is a youtube id
+#     account_id = service.get_api.get_account_id_from_url(account_link)
+#     if not account_id:
+#         return False
 
-    utils.log(f"Validating {len(channels)} channels...")
+#     existing_account = utils.find(
+#         entity.accounts, lambda account: account.service == service.get_service_name and account.id == account_id
+#     )
+#     if existing_account:
+#         utils.log(f"Account already added to entity")
+#         return False
 
-    # get existing archive
-    archive = utils.find(config.archives, lambda archive: archive.name == archive_name)
-    if not archive:
-        utils.log(f"Failed to find archive {archive_name}")
-        return False
+#     entity.accounts.append(Account(service=service.get_service_name, id=account_id))
+#     utils.log(f"Added account")
 
-    # validate channels and get ids
-    channel_ids: list[str] = []
+#     config.save()
 
-    for channel in channels:
-        if not validate_url(channel):
-            channelLink = f"https://youtube.com/channel/{channel}"
-        else:
-            channelLink = channel
-
-        try:
-            data = youtube.get_data(channelLink)
-            channel_id = data["channel_id"]
-
-            if channel_id in channel_ids or channel_id in archive.channels:
-                utils.log(f"Skipping duplicate channel {channel}")
-                continue
-
-            channel_ids.append(channel_id)
-            utils.log(f"Added channel {data['channel']}")
-        except Exception:
-            utils.log(f"Failed to fetch channel {channelLink}, skipping.")
-
-    if len(channel_ids) == 0:
-        utils.log("No valid channels were found.")
-        return False
-
-    # add channels to existing archive
-    archive.channels = archive.channels + channel_ids
-
-    config.save()
-
-    return True
+#     return True
 
 
 @archie.command()
-@click.argument("name", required=False)
-def create(name):
+@click.argument("archive_name", required=True)
+def create(archive_name):
     """
     Creates a new archive
     """
 
-    def print_error_and_examples(msg: str):
-        utils.log(msg + " To create an archive, enter a name.")
-        utils.log("e.g. [dim]archie create my-archive[/dim]")
-
-    if not name:
-        return print_error_and_examples("No name provided.")
-
     with db.connect():
         with load_config() as config:
             # check if name is duplicate
-            if any(archive.name == name for archive in config.archives):
-                return utils.log(f"An archive already exists with the name '{name}'.")
+            if any(archive.name == archive_name for archive in config.archives):
+                return utils.log(f"An archive already exists with the name '{archive_name}'.")
 
             # create new archive
-            config.archives.append(ArchiveConfig(name=name))
+            config.archives.append(ArchiveConfig(name=archive_name))
             config.save()
 
-    utils.log(f"Created archive '{name}'. You can edit the archive settings at {CFG_PATH}.")
-    utils.log(f"To add channels to the archive, use [dim]archie add {name}[/dim]")
+    utils.log(f"Created archive '{archive_name}'. You can edit the archive settings at {CFG_PATH}.")
+    utils.log(f"To add channels to the archive, use [dim]archie add-entity {archive_name}[/dim]")
 
 
 @archie.command()
-@click.argument("name", required=False)
-@click.argument("channels", nargs=-1, required=False)
-def add(name, channels):
+@click.argument("archive_name", required=True)
+@click.argument("entity_name", required=True)
+def add_entity(archive_name, entity_name):
+    # TODO: Change name to something less verbose
     """
-    Adds channels to an existing archive
+    Adds an entity to an archive
     """
-
-    def print_error_and_examples(msg: str):
-        utils.log(
-            msg + " To add channels to an archive, enter a name and a list of YouTube channel links or IDs after the add command."
-        )
-        utils.log("e.g. [dim]archie add my-archive https://youtube.com/@Jerma985 https://youtube.com/@2ndJerma[/dim]")
-        utils.log("or [dim]archie add my-archive UCK3kaNXbB57CLcyhtccV_yw UCL7DDQWP6x7wy0O6L5ZIgxg[/dim]")
-
-    if not name:
-        return print_error_and_examples("No name provided.")
-
-    if len(channels) == 0:
-        return print_error_and_examples("No channels provided.")
 
     with db.connect():
         with load_config() as config:
-            # check if name is not duplicate
-            if not any(archive.name == name for archive in config.archives):
-                return utils.log(f"Archive '{name}' not found.")
+            archive = utils.find(config.archives, lambda archive: archive.name == archive_name)
+            if not archive:
+                return utils.log(f"Archive '{archive_name}' not found.")
 
-            if not add_channels_to_archive(config, name, channels):
-                return utils.log("Cancelled adding channel.")
+            # check if entity name is duplicate
+            entity = utils.find(archive.entities, lambda entity: entity.name == entity_name)
+            if entity:
+                return utils.log(f"An entity named '{entity_name}' already exists in archive '{archive_name}'.")
 
-    utils.log(f"Added channels to archive '{name}'.")
-    utils.log("To run the archive, use [dim]archie run[/dim]")
+            # create new entity
+            archive.entities.append(Entity(name=entity_name))
+            config.save()
+
+    utils.log(f"Added entity '{entity_name}' to archive '{archive_name}'.")
+    utils.log(f"To add accounts to the entity, use [dim]archie add-entity-account {entity_name} [service] [link][/dim]")
+
+
+@archie.command()
+@click.argument("archive_name", required=True)
+@click.argument("entity_name", required=True)
+@click.argument("service", required=True)
+@click.argument("account", required=True)
+def add_entity_account(archive_name, entity_name, service, account):
+    # TODO: Change name to something less verbose
+    """
+    Add an account to an entity
+    """
+
+    if service not in services:
+        return utils.log(f"Service not supported. Supported services: {', '.join(services.keys())}")
+
+    with db.connect():
+        with load_config() as config:
+            archive = utils.find(config.archives, lambda archive: archive.name == archive_name)
+            if not archive:
+                return utils.log(f"Archive '{archive_name}' not found.")
+
+            entity = utils.find(archive.entities, lambda entity: entity.name == entity_name)
+            if not entity:
+                return utils.log(f"Entity '{entity_name}' not found.")
+
+            # if not add_account_to_archive(config, entity, services[service], account):
+            #     return utils.log("Account not added")
+
+    utils.log(f"Added account to entity '{entity_name}' in archive '{archive_name}'.")
 
 
 @archie.command()
@@ -137,7 +131,7 @@ def run():
     """
     with db.connect():
         with load_config() as config:
-            with youtube.rich_progress:
+            with rich_progress:
                 if len(config.archives) == 0:
                     return utils.log("No archives created, create one using [dim]create [archive name] [channel(s)][/dim]")
 
@@ -147,12 +141,8 @@ def run():
                             f"The download path '{archive.downloads.download_path}' specified in archive '{archive.name}' is not a valid path. Please add a proper path and try again."
                         )
 
-                downloader.init()
-
-                for i in range(5):
-                    threading.Thread(target=downloader.download_videos, args=(config,), daemon=True).start()
-
-                threading.Thread(target=parser.parse, args=(config,), daemon=True).start()
+                for service_name, service in services.items():
+                    service.run(config)
 
                 while True:
                     # Twidles Thumbs

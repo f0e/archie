@@ -40,7 +40,7 @@ async def exception_handler(request: Request, exc: Exception):
 @app.get("/channel/{id}")
 def channel(id: str):
     print(id)
-    return db.Channel.get(id, True)
+    return db.YouTubeAccount.get(id, True)
 
 
 def run():
