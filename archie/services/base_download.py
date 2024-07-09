@@ -15,7 +15,7 @@ from archie.config import TEMP_DL_PATH
 rich_progress = Progress(
     TaskProgressColumn(justify="right"),
     BarColumn(bar_width=30),
-    TextColumn("[bold blue]{task.fields[video].channel.name} - {task.fields[video].title}"),
+    TextColumn("[bold blue]{task.fields[channel][title]} - {task.fields[video][title]}"),
     TimeRemainingColumn(),
     DownloadColumn(),
     console=console,

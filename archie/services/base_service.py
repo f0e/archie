@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
 
-import archie.config as cfg
-
 
 class BaseService(ABC):
     @property
     @abstractmethod
-    def get_service_name(self):
+    def service_name(self):
         pass
 
     @abstractmethod
@@ -18,5 +16,5 @@ class BaseService(ABC):
         pass
 
     @abstractmethod
-    def run(self, config: cfg.Config):
+    def run(self, config):
         pass

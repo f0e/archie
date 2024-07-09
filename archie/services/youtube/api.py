@@ -1,18 +1,12 @@
 import json
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+from typing import Tuple
 
 import yt_dlp  # type: ignore
 
 import archie.config as cfg
-from archie.database.database import (
-    AccountStatus,
-    YouTubeAccount,
-    YouTubePlaylist,
-    YouTubeVideo,
-)
 from archie.utils import utils
 
 from ._filter import filter_video
@@ -35,18 +29,14 @@ def debug_write(data, filename):
         out_file.write(json.dumps(data))
 
 
-def log(in_spider, *args, **kwargs):
-    if not in_spider:
-        utils.module_log("youtube", "red", *args, **kwargs)
-    else:
-        utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
-
-
 class YouTubeAPI:
     in_spider = False
 
     def _log(self, *args, **kwargs):
-        log(self.in_spider, *args, **kwargs)
+        if not self.in_spider:
+            utils.module_log("youtube", "red", *args, **kwargs)
+        else:
+            utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
 
     def get_channel_id_from_url(self, account_link: str) -> str | None:
         ydl_opts = {
@@ -67,7 +57,7 @@ class YouTubeAPI:
     def get_channel_url_from_id(self, account_id: str):
         return f"https://youtube.com/channel/{account_id}"
 
-    def get_channel(self, account_id: str, status: AccountStatus, from_spider: bool = False):
+    def get_channel(self, account_id: str, from_spider: bool = False) -> Tuple[dict, list] | None:
         ydl_opts = {
             "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
             "quiet": True,
@@ -77,7 +67,11 @@ class YouTubeAPI:
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             try:
-                data = yt.extract_info(f"{channel_link}/videos", download=False)
+                data = yt.extract_info(
+                    f"{channel_link}/videos", download=False
+                )  # note: fetching videos page instead of about page since i'm fairly certain (need to re-check) that they return the same data, just with videos also having videos
+                videos = data.pop("entries")
+                return data, videos
             except yt_dlp.utils.DownloadError as e:
                 if "This channel does not have a videos tab" in e.msg:
                     self._log(f"channel has no videos, fetching about page instead ({channel_link})")
@@ -87,6 +81,7 @@ class YouTubeAPI:
 
                 try:
                     data = yt.extract_info(f"{channel_link}/about", download=False)
+                    return data, []
                 except yt_dlp.utils.DownloadError as e:
                     if "This channel does not have a about tab" in e.msg:
                         self._log("channel doesn't have an about page? skipping")
@@ -94,63 +89,62 @@ class YouTubeAPI:
                     else:
                         raise e
 
-            # get avatar and banner
-            avatar_url = None
-            banner_url = None
-            for image in data["thumbnails"]:
-                if image["id"] == "avatar_uncropped":
-                    avatar_url = image["url"]
-                elif image["id"] == "banner_uncropped":
-                    banner_url = image["url"]
+            # # get avatar and banner
+            # avatar_url = None
+            # banner_url = None
+            # for image in data["thumbnails"]:
+            #     if image["id"] == "avatar_uncropped":
+            #         avatar_url = image["url"]
+            #     elif image["id"] == "banner_uncropped":
+            #         banner_url = image["url"]
 
-            verified = False
-            if "channel_is_verified" in data:
-                verified = data["channel_is_verified"]
+            # verified = False
+            # if "channel_is_verified" in data:
+            #     verified = data["channel_is_verified"]
 
-            subscribers = data["channel_follower_count"] or 0
+            # subscribers = data["channel_follower_count"] or 0
 
-            # num_videos = len(data["entries"])
+            # # num_videos = len(data["entries"])
 
-            # if from_spider:
-            #     if filter_spider_channel(archive_config.spider.filters, subscribers, verified, num_videos):
-            #         # todo: what to do when the channel's already been added?
-            #         # todo: store filtered channels in db so they don't get checked again? and it'll also store their
-            #         #       info in case you change your mind on filter settings?
-            #         # todo: go back to parsing /about for filtering???
-            #         self._log("filtered channel")
-            #         return None
+            # # if from_spider:
+            # #     if filter_spider_channel(archive_config.spider.filters, subscribers, verified, num_videos):
+            # #         # todo: what to do when the channel's already been added?
+            # #         # todo: store filtered channels in db so they don't get checked again? and it'll also store their
+            # #         #       info in case you change your mind on filter settings?
+            # #         # todo: go back to parsing /about for filtering???
+            # #         self._log("filtered channel")
+            # #         return None
 
-            return {
-                "status": status,
-                "id": data["channel_id"],
-                "name": data["channel"],
-                "avatar_url": avatar_url,
-                "banner_url": banner_url,
-                "description": data["description"],
-                "subscribers": subscribers,
-                "tags": ",".join(data["tags"]),
-                "verified": verified,
-                "videos": [
-                    {
-                        "id": video["id"],
-                        "title": video["title"],
-                        "thumbnail_url": video["thumbnails"][0][
-                            "url"
-                        ],  # placeholder, get better quality thumbnail in get_content_data
-                        "description": video["description"],
-                        "duration": video["duration"],
-                        "availability": video["availability"],
-                        "views": video["view_count"],
-                    }
-                    for video in data["entries"]
-                ],
-            }
+            # return {
+            #     "id": data["channel_id"],
+            #     "name": data["channel"],
+            #     "avatar_url": avatar_url,
+            #     "banner_url": banner_url,
+            #     "description": data["description"],
+            #     "subscribers": subscribers,
+            #     "tags": ",".join(data["tags"]),
+            #     "verified": verified,
+            #     "videos": [
+            #         {
+            #             "id": video["id"],
+            #             "title": video["title"],
+            #             "thumbnail_url": video["thumbnails"][0][
+            #                 "url"
+            #             ],  # placeholder, get better quality thumbnail in get_content_data
+            #             "description": video["description"],
+            #             "duration": video["duration"],
+            #             "availability": video["availability"],
+            #             "views": video["view_count"],
+            #         }
+            #         for video in data["entries"]
+            #     ],
+            # }
 
     def get_video_data(self, video_id: str, spider: bool = False):
         # gets all info and commenters for a video
 
         ydl_opts = {
-            # "getcomments": True,
+            "getcomments": True,
             "quiet": True,
         }
 
@@ -163,56 +157,55 @@ class YouTubeAPI:
                 # todo: what to do when the video's already been added
                 pass
 
-            return {
-                "thumbnail_url": data["thumbnail"],
-                "categories_list": data["categories"],
-                "tags_list": data["tags"],
-                "availability": data["availability"],
-                "timestamp": datetime.utcfromtimestamp(data["epoch"]),
-                "comments": (
-                    [
-                        {
-                            "id": comment["id"],
-                            "parent_id": comment["parent"] if comment["parent"] != "root" else None,
-                            "text": comment["text"],
-                            "likes": comment["like_count"] or 0,
-                            "channel_id": comment["author_id"],
-                            "channel_avatar_url": comment["author_thumbnail"],
-                            "timestamp": comment.utcfromtimestamp(comment["timestamp"]),
-                            "favorited": comment["is_favorited"],
-                        }
-                        for comment in data["comments"]
-                    ]
-                    if "comments" in data
-                    else []
-                ),
-            }
+            return data
 
-    def get_channel_playlists(self, channel: YouTubeAccount, account_id: str) -> list[YouTubePlaylist] | None:
+            # return {
+            #     "thumbnail_url": data["thumbnail"],
+            #     "categories_list": data["categories"],
+            #     "tags_list": data["tags"],
+            #     "availability": data["availability"],
+            #     "timestamp": datetime.utcfromtimestamp(data["epoch"]),
+            #     "comments": (
+            #         [
+            #             {
+            #                 "id": comment["id"],
+            #                 "parent_id": comment["parent"] if comment["parent"] != "root" else None,
+            #                 "text": comment["text"],
+            #                 "likes": comment["like_count"] or 0,
+            #                 "channel_id": comment["author_id"],
+            #                 "channel_avatar_url": comment["author_thumbnail"],
+            #                 "timestamp": comment.utcfromtimestamp(comment["timestamp"]),
+            #                 "favorited": comment["is_favorited"],
+            #             }
+            #             for comment in data["comments"]
+            #         ]
+            #         if "comments" in data
+            #         else []
+            #     ),
+            # }
+
+    def get_channel_playlists(self, account_id: str):
         ydl_opts = {
             "quiet": True,
             "extract_flat": True,  # don't parse individual playlists
         }
 
-        playlist_link = f"https://www.youtube.com/{account_id}/playlists"
+        playlist_link = f"https://www.youtube.com/channel/{account_id}/playlists"
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             try:
                 data = yt.extract_info(playlist_link, download=False)
             except yt_dlp.utils.DownloadError as e:
-                if "HTTP Error 404: Not Found" in e.msg:
+                if "This channel does not have a playlists tab" in e.msg:
                     self._log(f"channel {account_id} has no playlists, skipping. ({account_id})")
-                    return None
+                    return []
                 else:
                     # AH?
                     raise e
 
-            playlists = data["entries"]
-            print("poopoo", playlists[0])
+            return data["entries"]
 
-            return playlists
-
-    def get_playlist(self, playlist_id: str, channel: YouTubeAccount) -> YouTubePlaylist:
+    def get_playlist(self, playlist_id: str):
         ydl_opts = {
             "quiet": True,
             "extract_flat": True,  # don't parse individual videos. also get videos that are unavailable
@@ -220,24 +213,13 @@ class YouTubeAPI:
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             data = yt.extract_info(f"https://www.youtube.com/playlist?list={playlist_id}", download=False)
+            videos = data.pop("entries")
+            return data, videos
 
-            return channel.add_or_update_playlist(
-                id=data["id"],
-                title=data["title"],
-                availability=data["availability"],
-                description=data["description"],
-                tags_list=data["tags"],
-                thumbnail_url=data["thumbnails"][0]["url"],
-                modified_date=data["modified_date"],
-                view_count=data["view_count"],
-                channel_id=channel.id,
-                videos=data["entries"],
-            )
-
-    def download(self, content: YouTubeVideo, download_folder: Path) -> DownloadedVideo | None:
+    def download(self, channel: dict, video: dict, download_folder: Path) -> DownloadedVideo | None:
         # returns the downloaded format
 
-        start_progress(content)
+        start_progress(channel, video)
 
         ydl_opts = {
             "progress_hooks": [progress_hooks],
@@ -270,15 +252,16 @@ class YouTubeAPI:
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             max_retries = 5
             data = utils.retryable(
-                lambda: yt.extract_info(f"https://www.youtube.com/watch?v={content.id}", download=True),
-                f"failed to download video '{content.title}', retrying... ({content.id})",
+                lambda: yt.extract_info(f"https://www.youtube.com/watch?v={video['id']}", download=True),
+                lambda: self._log(f"failed to download video '{video['title']}', retrying... ({video['id']})"),
                 max_retries=max_retries,
             )
 
-            finish_progress(content)
+            self._log("finished download for", video["title"])
+            finish_progress(video)
 
             if not data:
-                self._log(f"download for video '{content.title}' failed after {max_retries} retries, skipping. ({content.id})")
+                self._log(f"download for video '{video['title']}' failed after {max_retries} retries, skipping. ({video['id']})")
                 return None
 
             download_data = data["requested_downloads"][0]
@@ -301,6 +284,3 @@ class YouTubeAPI:
                 path=final_path,
                 format=download_data["format_id"],
             )
-
-    def get_existing_account(self, account_id: str):
-        return YouTubeAccount.get(account_id, True)

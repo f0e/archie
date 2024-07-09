@@ -4,8 +4,6 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-import archie.database.database as db
-
 from .routes import router
 
 DEBUG = True
@@ -13,9 +11,8 @@ DEBUG = True
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    with db.connect():
-        # with load_config() as _config:
-        yield
+    # with load_config() as _config:
+    yield
 
 
 app = FastAPI(title="archie", version="0.0.1", lifespan=lifespan)
@@ -39,8 +36,7 @@ async def exception_handler(request: Request, exc: Exception):
 
 @app.get("/channel/{id}")
 def channel(id: str):
-    print(id)
-    return db.YouTubeAccount.get(id, True)
+    return "Hi"
 
 
 def run():

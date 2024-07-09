@@ -1,12 +1,13 @@
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel
 
 from archie import ARCHIE_PATH
-from archie.database import database as db
-from archie.utils.utils import PrettyDumper
+from archie.services.base_service import BaseService
+from archie.utils import utils
 
 CFG_PATH = (
     ARCHIE_PATH / "config.yaml"
@@ -48,6 +49,7 @@ class SpiderOptions(BaseModel):
 class Account(BaseModel):
     service: str
     id: str
+    update_time: datetime | None = None
 
 
 class Entity(BaseModel):
@@ -55,6 +57,28 @@ class Entity(BaseModel):
     accounts: list[Account] = []
 
     # TODO: more fields, copy from rym?
+
+    def add_account(self, service: BaseService, account: str) -> bool:
+        if utils.validate_url(account):
+            account_link = account
+        else:
+            account_link = service.get_account_url_from_id(account)
+
+        account_id = service.get_account_id_from_url(account_link)
+        if not account_id:
+            return False
+
+        existing_account = utils.find(
+            self.accounts, lambda account: account.service == service.service_name and account.id == account_id
+        )
+        if existing_account:
+            utils.log("Account already added to entity")
+            return False
+
+        self.accounts.append(Account(service=service.service_name, id=account_id))
+        utils.log("Added account")
+
+        return True
 
 
 class ArchiveConfig(BaseModel):
@@ -75,7 +99,7 @@ class Config(BaseModel):
 
     def save(self, path: Path = CFG_PATH):
         with path.open("w") as f:
-            yaml.dump(self.dump(), f, Dumper=PrettyDumper, sort_keys=False)
+            yaml.dump(self.dump(), f, Dumper=utils.PrettyDumper, sort_keys=False)
 
     @staticmethod
     def load(path: Path = CFG_PATH):
@@ -90,15 +114,15 @@ class Config(BaseModel):
 
             return Config(**yaml_data)
 
+    def add_archive(self, archive_name: str):
+        self.archives.append(ArchiveConfig(name=archive_name))
+
 
 @contextmanager
 def load_config():
     config: Config | None = None
 
     try:
-        if not db.initialised:
-            raise Exception("Database not initialised")
-
         config = Config.load()
 
         # config might be missing or have extra variables, save after validating

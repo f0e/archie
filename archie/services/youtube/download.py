@@ -2,8 +2,6 @@ import threading
 
 from rich.progress import Progress, TaskID
 
-from archie.database.database import YouTubeVideo
-
 from ..base_download import rich_progress
 
 
@@ -35,9 +33,10 @@ class YTProgressData:
 class ProgressBar:
     task_id: TaskID
 
-    def __init__(self, video: YouTubeVideo):
-        self.video = video
-        self.task_id = rich_progress.add_task("download", video=video, start=False, total=0)
+    def __init__(self, channel, video):
+        # self.video = video
+        # self.channel = channel
+        self.task_id = rich_progress.add_task("download", channel=channel, video=video, start=False, total=0)
 
     def __del__(self):
         rich_progress.remove_task(self.task_id)
@@ -71,10 +70,10 @@ def progress_hooks(data):
             progresses[video_id].update(progress_data)
 
 
-def start_progress(video):
-    progresses[video.id] = ProgressBar(video)
+def start_progress(channel, video):
+    progresses[video["id"]] = ProgressBar(channel, video)
 
 
 def finish_progress(video):
-    if video.id in progresses:
-        del progresses[video.id]
+    if video["id"] in progresses:
+        del progresses[video["id"]]

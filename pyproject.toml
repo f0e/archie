@@ -17,7 +17,7 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.10"
 click = "^8.1.7"
-yt-dlp = "^2023.7.6"
+yt-dlp = "^2024.7.7"
 sqlalchemy = "^2.0.20"
 requests = "^2.31.0"
 pydantic = "^2.3.0"
@@ -25,10 +25,12 @@ pyyaml = "^6.0.1"
 rich = "^13.5.2"
 fastapi = "^0.103.1"
 uvicorn = { extras = ["standard"], version = "^0.23.2" }
+redis = "^5.0.7"
 
 [tool.poetry.group.dev.dependencies]
 types-requests = "^2.31.0.2"
 types-pyyaml = "^6.0.12.11"
+types-redis = "^4.6.0.20240425"
 
 [tool.poetry.scripts]
 archie = 'archie.cli:archie'
