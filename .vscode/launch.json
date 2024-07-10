@@ -6,7 +6,7 @@
   "configurations": [
     {
       "name": "archie create",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "module": "archie.cli",
@@ -15,7 +15,7 @@
     },
     {
       "name": "archie run",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "module": "archie.cli",
