@@ -5,7 +5,7 @@ import requests
 import yaml
 from rich.style import Style
 
-from archie import console, error_console
+from archie import console
 
 
 def log(*args, **kwargs):
@@ -16,15 +16,15 @@ def module_log(module: str, module_style: str | Style | None, *args, **kwargs):
     console.print(f"[{module_style}]\\[{module}][/{module_style}] " + " ".join(map(str, args)), **kwargs)
 
 
-def retryable(function, fail_message: str, max_retries=5, retry_delay_sec=5, on_exception=None):
+def retryable(function, fail_function, max_retries=5, retry_delay_sec=5, on_exception=None):
     for i in range(max_retries):
         try:
             return function()
         except Exception as e:
-            # todo: print the error properly, HOW DO YOU DO THAT
-            error_console.print(repr(e))
+            # TODO: print the error properly, HOW DO YOU DO THAT
+            # error_console.print(repr(e))
 
-            log(fail_message)
+            fail_function()
             time.sleep(retry_delay_sec)
 
             if on_exception:

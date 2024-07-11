@@ -1,12 +1,13 @@
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator, Tuple
 
 import yaml
 from pydantic import BaseModel
 
 from archie import ARCHIE_PATH
-from archie.database import database as db
-from archie.utils.utils import PrettyDumper
+from archie.services.base_service import BaseService
+from archie.utils import utils
 
 CFG_PATH = (
     ARCHIE_PATH / "config.yaml"
@@ -37,7 +38,7 @@ class UpdateOptions(BaseModel):
 
 
 class DownloadOptions(BaseModel):
-    download_path: str = "./downloads"
+    download_path: str = "~/archie-downloads"
 
 
 class SpiderOptions(BaseModel):
@@ -45,9 +46,43 @@ class SpiderOptions(BaseModel):
     filters: SpiderFilterOptions = SpiderFilterOptions()
 
 
+class Account(BaseModel):
+    service: str
+    id: str
+
+
+class Entity(BaseModel):
+    name: str
+    accounts: list[Account] = []
+
+    # TODO: more fields, copy from rym?
+
+    def add_account(self, service: BaseService, account: str) -> bool:
+        if utils.validate_url(account):
+            account_link = account
+        else:
+            account_link = service.get_account_url_from_id(account)
+
+        account_id = service.get_account_id_from_url(account_link)
+        if not account_id:
+            return False
+
+        existing_account = utils.find(
+            self.accounts, lambda account: account.service == service.service_name and account.id == account_id
+        )
+        if existing_account:
+            utils.log("Account already added to entity")
+            return False
+
+        self.accounts.append(Account(service=service.service_name, id=account_id))
+        utils.log("Added account")
+
+        return True
+
+
 class ArchiveConfig(BaseModel):
     name: str
-    channels: list[str] = []
+    entities: list[Entity] = []
 
     filters: FilterOptions = FilterOptions()
     updating: UpdateOptions = UpdateOptions()
@@ -63,7 +98,7 @@ class Config(BaseModel):
 
     def save(self, path: Path = CFG_PATH):
         with path.open("w") as f:
-            yaml.dump(self.dump(), f, Dumper=PrettyDumper, sort_keys=False)
+            yaml.dump(self.dump(), f, Dumper=utils.PrettyDumper, sort_keys=False)
 
     @staticmethod
     def load(path: Path = CFG_PATH):
@@ -78,15 +113,31 @@ class Config(BaseModel):
 
             return Config(**yaml_data)
 
+    def add_archive(self, archive_name: str):
+        self.archives.append(ArchiveConfig(name=archive_name))
+
+    def find_archives_with_account(self, service: str, id: str) -> Iterator[ArchiveConfig]:
+        for archive in self.archives:
+            for entity in archive.entities:
+                for account in entity.accounts:
+                    if account.service == service and account.id == id:
+                        yield archive
+
+        return []
+
+    def get_accounts(self, service: str) -> Iterator[Tuple[Account, Entity, ArchiveConfig]]:
+        for archive in self.archives:
+            for entity in archive.entities:
+                for account in entity.accounts:
+                    if account.service == service:
+                        yield account, entity, archive
+
 
 @contextmanager
 def load_config():
     config: Config | None = None
 
     try:
-        if not db.initialised:
-            raise Exception("Database not initialised")
-
         config = Config.load()
 
         # config might be missing or have extra variables, save after validating
