@@ -90,57 +90,6 @@ class YouTubeAPI:
                     else:
                         raise e
 
-            # # get avatar and banner
-            # avatar_url = None
-            # banner_url = None
-            # for image in data["thumbnails"]:
-            #     if image["id"] == "avatar_uncropped":
-            #         avatar_url = image["url"]
-            #     elif image["id"] == "banner_uncropped":
-            #         banner_url = image["url"]
-
-            # verified = False
-            # if "channel_is_verified" in data:
-            #     verified = data["channel_is_verified"]
-
-            # subscribers = data["channel_follower_count"] or 0
-
-            # # num_videos = len(data["entries"])
-
-            # # if from_spider:
-            # #     if filter_spider_channel(archive_config.spider.filters, subscribers, verified, num_videos):
-            # #         # todo: what to do when the channel's already been added?
-            # #         # todo: store filtered channels in db so they don't get checked again? and it'll also store their
-            # #         #       info in case you change your mind on filter settings?
-            # #         # todo: go back to parsing /about for filtering???
-            # #         self._log("filtered channel")
-            # #         return None
-
-            # return {
-            #     "id": data["channel_id"],
-            #     "name": data["channel"],
-            #     "avatar_url": avatar_url,
-            #     "banner_url": banner_url,
-            #     "description": data["description"],
-            #     "subscribers": subscribers,
-            #     "tags": ",".join(data["tags"]),
-            #     "verified": verified,
-            #     "videos": [
-            #         {
-            #             "id": video["id"],
-            #             "title": video["title"],
-            #             "thumbnail_url": video["thumbnails"][0][
-            #                 "url"
-            #             ],  # placeholder, get better quality thumbnail in get_content_data
-            #             "description": video["description"],
-            #             "duration": video["duration"],
-            #             "availability": video["availability"],
-            #             "views": video["view_count"],
-            #         }
-            #         for video in data["entries"]
-            #     ],
-            # }
-
     def get_video_data(self, video_id: str, spider: bool = False):
         # gets all info and commenters for a video
 
@@ -159,31 +108,6 @@ class YouTubeAPI:
                 pass
 
             return data
-
-            # return {
-            #     "thumbnail_url": data["thumbnail"],
-            #     "categories_list": data["categories"],
-            #     "tags_list": data["tags"],
-            #     "availability": data["availability"],
-            #     "timestamp": datetime.utcfromtimestamp(data["epoch"]),
-            #     "comments": (
-            #         [
-            #             {
-            #                 "id": comment["id"],
-            #                 "parent_id": comment["parent"] if comment["parent"] != "root" else None,
-            #                 "text": comment["text"],
-            #                 "likes": comment["like_count"] or 0,
-            #                 "channel_id": comment["author_id"],
-            #                 "channel_avatar_url": comment["author_thumbnail"],
-            #                 "timestamp": comment.utcfromtimestamp(comment["timestamp"]),
-            #                 "favorited": comment["is_favorited"],
-            #             }
-            #             for comment in data["comments"]
-            #         ]
-            #         if "comments" in data
-            #         else []
-            #     ),
-            # }
 
     def get_channel_playlists(self, account_id: str):
         ydl_opts = {
