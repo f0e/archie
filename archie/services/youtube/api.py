@@ -16,6 +16,7 @@ from .download import finish_progress, progress_hooks, start_progress
 @dataclass
 class DownloadedVideo:
     path: Path
+    video_relative_path: Path
     format: str
 
 
@@ -34,9 +35,9 @@ class YouTubeAPI:
 
     def _log(self, *args, **kwargs):
         if not self.in_spider:
-            utils.module_log("youtube", "red", *args, **kwargs)
+            utils.module_log("youtube api", "dark_red", *args, **kwargs)
         else:
-            utils.module_log("youtube (spider)", "magenta", *args, **kwargs)
+            utils.module_log("youtube api (spider)", "magenta", *args, **kwargs)
 
     def get_channel_id_from_url(self, account_link: str) -> str | None:
         ydl_opts = {
@@ -268,10 +269,10 @@ class YouTubeAPI:
 
             # get just the download path, not the stuff before it. so c:\...\temp-downloads\channel\video.mkv just becomes channel\video.mkv
             downloaded_path = Path(download_data["filepath"])
-            relative_path = downloaded_path.relative_to(cfg.TEMP_DL_PATH)
+            video_relative_path = downloaded_path.relative_to(cfg.TEMP_DL_PATH)
 
             # build proper download path
-            final_path = download_folder / relative_path
+            final_path = download_folder / video_relative_path
 
             if final_path.exists():
                 self._log("video already exists? skipping")
@@ -282,5 +283,6 @@ class YouTubeAPI:
 
             return DownloadedVideo(
                 path=final_path,
+                video_relative_path=video_relative_path,
                 format=download_data["format_id"],
             )

@@ -106,10 +106,18 @@ def get_undownloaded_video(skip_ids: list[str]):
     return None
 
 
-def store_download(video_id: str, path: Path, format: str):
+def store_download(video_id: str, path: Path, relative_video_path: Path, format: str):
     key = f"youtube:download:{video_id}"
 
-    store(key, {"meta": {"download_time": datetime.now(timezone.utc)}, "path": path, "format": format})
+    store(
+        key,
+        {
+            "meta": {"download_time": datetime.now(timezone.utc)},
+            "path": path,
+            "relative_video_path": relative_video_path,
+            "format": format,
+        },
+    )
 
 
 def get_downloads():

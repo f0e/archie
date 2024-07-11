@@ -1,6 +1,6 @@
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
+from typing import Iterator, Tuple
 
 import yaml
 from pydantic import BaseModel
@@ -38,7 +38,7 @@ class UpdateOptions(BaseModel):
 
 
 class DownloadOptions(BaseModel):
-    download_path: str = "./downloads"
+    download_path: str = "~/archie-downloads"
 
 
 class SpiderOptions(BaseModel):
@@ -49,7 +49,6 @@ class SpiderOptions(BaseModel):
 class Account(BaseModel):
     service: str
     id: str
-    update_time: datetime | None = None
 
 
 class Entity(BaseModel):
@@ -116,6 +115,22 @@ class Config(BaseModel):
 
     def add_archive(self, archive_name: str):
         self.archives.append(ArchiveConfig(name=archive_name))
+
+    def find_archives_with_account(self, service: str, id: str) -> Iterator[ArchiveConfig]:
+        for archive in self.archives:
+            for entity in archive.entities:
+                for account in entity.accounts:
+                    if account.service == service and account.id == id:
+                        yield archive
+
+        return []
+
+    def get_accounts(self, service: str) -> Iterator[Tuple[Account, Entity, ArchiveConfig]]:
+        for archive in self.archives:
+            for entity in archive.entities:
+                for account in entity.accounts:
+                    if account.service == service:
+                        yield account, entity, archive
 
 
 @contextmanager
