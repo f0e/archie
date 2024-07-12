@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-import redis
+from redis import Redis
 
-r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+from archie.services.base_redis import get_undownloaded_id
+
+r = Redis(host="localhost", port=6379, decode_responses=True)
 
 
 def store(key, data_json):
@@ -20,7 +22,7 @@ def get(key):
     return json.loads(data)
 
 
-def get_channel(channel_id: str):
+def get_channel(channel_id):
     key = f"youtube:channel:{channel_id}"
 
     return get(key)
@@ -91,19 +93,11 @@ def store_video(video: dict):
 
 
 def get_undownloaded_video(skip_ids: list[str]):
-    all_videos = r.keys("youtube:video:*")
+    undownloaded_id = get_undownloaded_id(r, "youtube", "video", skip_ids)
+    if not undownloaded_id:
+        return None
 
-    for video_key in all_videos:
-        video_id = video_key.split(":")[-1]
-
-        if video_id in skip_ids:
-            continue
-
-        download_key = f"youtube:download:{video_id}"
-        if not r.get(download_key):
-            return get(video_key)
-
-    return None
+    return get_video(undownloaded_id)
 
 
 def store_download(video_id: str, path: Path, relative_video_path: Path, format: str):

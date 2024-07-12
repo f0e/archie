@@ -1,5 +1,3 @@
-import threading
-
 from rich.progress import Progress, TaskID
 
 from ..base_download import rich_progress
@@ -34,9 +32,9 @@ class ProgressBar:
     task_id: TaskID
 
     def __init__(self, channel, video):
-        # self.video = video
-        # self.channel = channel
-        self.task_id = rich_progress.add_task("download", channel=channel, video=video, start=False, total=0)
+        self.task_id = rich_progress.add_task(
+            "download", service="youtube", author=channel["channel"], title=video["title"], start=False, total=0
+        )
 
     def __del__(self):
         rich_progress.remove_task(self.task_id)
@@ -47,8 +45,6 @@ class ProgressBar:
 
 
 progresses: dict[str, ProgressBar] = dict()
-total_speeds: list[int] = []
-process_lock = threading.Lock()
 
 
 def progress_hooks(data):

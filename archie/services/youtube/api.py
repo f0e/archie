@@ -55,10 +55,10 @@ class YouTubeAPI:
                 self._log(e)
                 return None
 
-    def get_channel_url_from_id(self, account_id: str):
+    def get_channel_url_from_id(self, account_id):
         return f"https://youtube.com/channel/{account_id}"
 
-    def get_channel(self, account_id: str, from_spider: bool = False) -> Tuple[dict, list] | None:
+    def get_channel(self, account_id, from_spider: bool = False) -> Tuple[dict, list] | None:
         ydl_opts = {
             "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
             "quiet": True,
@@ -109,7 +109,7 @@ class YouTubeAPI:
 
             return data
 
-    def get_channel_playlists(self, account_id: str):
+    def get_channel_playlists(self, account_id):
         ydl_opts = {
             "quiet": True,
             "extract_flat": True,  # don't parse individual playlists

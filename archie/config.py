@@ -32,9 +32,14 @@ class SpiderFilterOptions(BaseModel):
     parse_playlists: bool = True
 
 
-class UpdateOptions(BaseModel):
+class YouTubeOptions(BaseModel):
     channel_update_gap_hours: int = 24
     video_update_gap_hours: int = 24 * 7
+
+
+class SoundCloudOptions(BaseModel):
+    user_update_gap_hours: int = 24
+    track_update_gap_hours: int = 24 * 7
 
 
 class DownloadOptions(BaseModel):
@@ -48,7 +53,7 @@ class SpiderOptions(BaseModel):
 
 class Account(BaseModel):
     service: str
-    id: str
+    id: str | int
 
 
 class Entity(BaseModel):
@@ -62,6 +67,9 @@ class Entity(BaseModel):
             account_link = account
         else:
             account_link = service.get_account_url_from_id(account)
+            if not account_link:
+                utils.log("Invalid account id")
+                return False
 
         account_id = service.get_account_id_from_url(account_link)
         if not account_id:
@@ -80,12 +88,17 @@ class Entity(BaseModel):
         return True
 
 
+class ServiceOptions(BaseModel):
+    youtube: YouTubeOptions = YouTubeOptions()
+    soundcloud: SoundCloudOptions = SoundCloudOptions()
+
+
 class ArchiveConfig(BaseModel):
     name: str
     entities: list[Entity] = []
 
     filters: FilterOptions = FilterOptions()
-    updating: UpdateOptions = UpdateOptions()
+    services: ServiceOptions = ServiceOptions()
     downloads: DownloadOptions = DownloadOptions()
     spider: SpiderOptions = SpiderOptions()
 

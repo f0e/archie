@@ -6,12 +6,20 @@ import click
 import archie.api.api as api
 from archie.config import CFG_PATH, Entity, load_config
 from archie.services.base_download import rich_progress
+from archie.services.base_service import BaseService
+from archie.services.soundcloud import SoundCloudService
 from archie.services.youtube import YouTubeService
 from archie.utils import utils
 
-services = {
-    "youtube": YouTubeService(),
-}
+# idk
+service_list: list[BaseService] = [
+    YouTubeService(),
+    SoundCloudService(),
+]
+
+services = {}
+for service in service_list:
+    services[service.service_name.lower()] = service
 
 
 @click.group()
