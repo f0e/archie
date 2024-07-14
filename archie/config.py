@@ -83,7 +83,6 @@ class Entity(BaseModel):
             return False
 
         self.accounts.append(Account(service=service.service_name, id=account_id))
-        utils.log("Added account")
 
         return True
 

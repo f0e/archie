@@ -25,7 +25,7 @@ def log(*args, **kwargs):
 
 
 class SoundCloudService(BaseService):
-    _current_downloads: Set[str] = set()
+    _current_downloads: Set[int] = set()
     _current_downloads_lock = threading.Lock()
 
     @property
@@ -45,6 +45,8 @@ class SoundCloudService(BaseService):
     def run(self, config: Config):
         log("starting")
 
+        threading.Thread(target=self._background, daemon=True).start()
+
         threading.Thread(target=self._check_downloads, args=(config,), daemon=True).start()
 
         for i in range(5):
@@ -52,26 +54,33 @@ class SoundCloudService(BaseService):
 
         threading.Thread(target=self._parse, args=(config,), daemon=True).start()
 
+    def _background(self):
+        while True:
+            db.update_indexes()
+            time.sleep(10)
+
     def __parse_users(self, config: Config):
         for account, entity, archive in config.get_accounts(self.service_name):
             user_min_update_time = datetime.now(timezone.utc) - timedelta(hours=archive.services.soundcloud.user_update_gap_hours)
 
             db_user = db.get_user(account.id)
             if db_user:
-                if db_user.meta.scan_time > user_min_update_time:
+                if db_user["_scan_source"] == "full" and db_user["_scan_time"] > user_min_update_time:
                     continue
 
-                log(f"updating user {db_user.user.username} ({account.id})")
+                log(f"updating user {db_user['user']['username']} ({account.id})")
             else:
                 log(f"parsing user ({account.id})")
 
             user = sc.get_user(account.id)
+
             tracks = list(sc.get_user_tracks(user.id, limit=80000))
             playlists = list(sc.get_user_playlists(user.id, limit=80000))
             links = sc.get_user_links(user.id)
             reposts = list(sc.get_user_reposts(user.id, limit=80000))
 
-            db.store_user(user, tracks, playlists, links, reposts, "full", "accepted")
+            db.store_user(user, "full", "accepted", tracks, playlists, links, reposts)
+            log(f"parsed user {user.username} ({user.id})")
 
     def __parse_tracks(self, config: Config):
         for account, entity, archive in config.get_accounts(self.service_name):
@@ -83,24 +92,36 @@ class SoundCloudService(BaseService):
                 hours=archive.services.soundcloud.track_update_gap_hours
             )
 
-            for i, track in enumerate(user.tracks):
-                db_track = db.get_track(track.id)  # TODO: this might be super inefficient, see if u can just get meta
+            for i, track_id in enumerate(user["tracks"]):
+                db_track = db.get_track(track_id)  # TODO: this might be super inefficient, see if u can just get meta
 
                 if db_track:
-                    if db_track.meta.scan_time > track_min_update_time:
+                    if db_track["_scan_source"] == "full" and db_track["_scan_time"] > track_min_update_time:
                         continue
 
-                    log(f"({i+1}/{len(user.tracks)}) updating track {user.user.username} - {track.title} ({track.id})")
+                    log(f"({i+1}/{len(user['tracks'])}) updating track id {track_id}")
                 else:
-                    log(f"({i+1}/{len(user.tracks)}) parsing track {user.user.username} - {track.title} ({track.id})")
+                    log(f"({i+1}/{len(user['tracks'])}) parsing track id {track_id}")
 
-                albums = list(sc.get_track_albums(track.id, limit=80000))
-                comments = list(sc.get_track_comments(track.id, limit=80000))
-                likers = list(sc.get_track_likers(track.id, limit=80000))
-                reposters = list(sc.get_track_reposters(track.id, limit=80000))
-                playlists = list(sc.get_track_playlists(track.id, limit=80000))
+                track = sc.get_track(track_id)
 
-                db.store_track(track.id, track, albums, comments, likers, reposters, playlists)
+                log(f"parsing albums | {track.user.username} - {track.title} ({track_id})")
+                albums = list(sc.get_track_albums(track_id, limit=80000))
+
+                log(f"parsing comments | {track.user.username} - {track.title} ({track_id})")
+                comments = list(sc.get_track_comments(track_id, limit=80000))
+
+                log(f"parsing likers | {track.user.username} - {track.title} ({track_id})")
+                likers = list(sc.get_track_likers(track_id, limit=80000))
+
+                log(f"parsing reposters | {track.user.username} - {track.title} ({track_id})")
+                reposters = list(sc.get_track_reposters(track_id, limit=80000))
+
+                log(f"parsing playlists | {track.user.username} - {track.title} ({track_id})")
+                playlists = list(sc.get_track_playlists(track_id, limit=80000))
+
+                db.store_track(track, "full", albums, comments, likers, reposters, playlists)
+                log(f"parsed {track.user.username} - {track.title} ({track_id})")
 
     def _parse(self, config: Config):
         while True:
@@ -110,16 +131,17 @@ class SoundCloudService(BaseService):
             time.sleep(1)
 
     def _check_downloads(self, config: Config):
-        for track_id, download in db.get_downloads():
+        for download in db.get_downloads():
             if not download:
                 continue
 
-            path = Path(download.path)
+            track_id = download["track_id"]
+            path = Path(download["path"])
 
             # remove deleted downloads
             if not path.exists():
                 log(f"download for video '{track_id}' no longer exists, deleting from db")
-                db.remove_download(track_id)
+                db.remove_download(download["_id"])
                 continue
 
             # check if the video exists everywhere it should
@@ -128,15 +150,15 @@ class SoundCloudService(BaseService):
                 log(f"note: download {track_id} has no track in database")
                 continue
 
-            user = db.get_user(track.track.user_id)
+            user = db.get_user(track["track"]["user_id"])
             if not user:
                 log(f"note: download {track_id} has no user in database")
                 continue
 
-            track_archives = list(config.find_archives_with_account(self.service_name, user.user.id))
+            track_archives = list(config.find_archives_with_account(self.service_name, user["user"]["id"]))
 
             for archive in track_archives:
-                copy_download(self.service_name, path, download.relative_video_path, archive)
+                copy_download(self.service_name, path, download["relative_video_path"], archive)
 
     def _download_tracks(self, config: Config):  # TODO: some of this can be generalised most likely
         while True:
@@ -150,29 +172,34 @@ class SoundCloudService(BaseService):
                     log(f"took {execution_time_secs} secs to find an undownloaded track, debug & optimise")
 
                 if track:
-                    self._current_downloads.add(str(track.track.id))
+                    self._current_downloads.add(track["track"]["id"])
 
             if not track:
                 time.sleep(1)
                 continue
 
-            user = db.get_user(track.track.user_id)
+            # this isn't needed, but nice for printing TODO: maybe remove
+            user = db.get_user(track["track"]["user_id"])
             assert user, "User does not exist?"
 
-            user_archives = list(config.find_archives_with_account(self.service_name, user.user.id))
+            user_archives = list(config.find_archives_with_account(self.service_name, user["user"]["id"]))
 
             assert len(user_archives) > 0  # todo: i know this will fail at some point i have to code the logic for it
 
             archive = user_archives[0]
 
-            log(f"downloading track {user.user.username} - {track.track.title} ({track.track.id})")
+            log(f"downloading track {user['user']['username']} - {track['track']['title']} ({track['track']['id']})")
 
             download_path = Path(archive.downloads.download_path).expanduser() / self.service_name
 
-            download_data = download_track(user.user, track.track, download_path)
+            # hate this but its cause internally scdl needs proper types. TODO: figure out workaround
+            sc_user = sc.get_user(user["user"]["id"])
+            sc_track = sc.get_track(track["track"]["id"])
+
+            download_data = download_track(sc_user, sc_track, download_path)
 
             with self._current_downloads_lock:
-                self._current_downloads.remove(str(track.track.id))
+                self._current_downloads.remove(track["track"]["id"])
 
             if not download_data:
                 # download somehow failed 5 times, skip it
@@ -180,7 +207,7 @@ class SoundCloudService(BaseService):
                 continue
 
             db.store_download(
-                track.track.id,
+                track["track"]["id"],
                 download_data.path,
                 download_data.video_relative_path,
                 download_data.wave,
@@ -189,4 +216,4 @@ class SoundCloudService(BaseService):
             for other_archive in user_archives[1:]:
                 copy_download(self.service_name, download_data.path, download_data.video_relative_path, other_archive)
 
-            log(f"finished downloading {track.track.title} (wave {download_data.wave})")
+            log(f"finished downloading {track['track']['title']} (wave {download_data.wave})")

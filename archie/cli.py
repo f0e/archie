@@ -71,7 +71,7 @@ def add_entity(archive_name, entity_name):
         config.save()
 
     utils.log(f"Added entity '{entity_name}' to archive '{archive_name}'.")
-    utils.log(f"To add accounts to the entity, use [dim]archie add-entity-account {entity_name} [service] [link][/dim]")
+    utils.log("To add accounts to the entity, use [dim]archie add-entity-account[/dim]")
 
 
 @archie.command()
@@ -86,7 +86,7 @@ def add_entity_account(archive_name, entity_name, service, account):
     """
 
     if service not in services:
-        return utils.log(f"Service not supported. Supported services: {', '.join(services.keys())}")
+        return utils.log(f"Service '{service}' not supported. Supported services: {', '.join(services.keys())}")
 
     with load_config() as config:
         archive = utils.find(config.archives, lambda archive: archive.name == archive_name)

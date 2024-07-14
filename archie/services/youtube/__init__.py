@@ -34,8 +34,6 @@ class YouTubeService(BaseService):
         return self.api.get_channel_id_from_url(link)
 
     def run(self, config: Config):
-        log("starting")
-
         threading.Thread(target=self._check_downloads, args=(config,), daemon=True).start()
 
         for i in range(5):
