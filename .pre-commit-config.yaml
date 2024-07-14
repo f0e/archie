@@ -30,7 +30,8 @@ repos:
     rev: v1.5.1
     hooks:
       - id: mypy
-        additional_dependencies: [types-requests, types-PyYAML, types-redis]
+        additional_dependencies:
+          [types-requests, types-PyYAML, types-redis, types-python-dateutil]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.0.287

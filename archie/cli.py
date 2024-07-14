@@ -6,12 +6,20 @@ import click
 import archie.api.api as api
 from archie.config import CFG_PATH, Entity, load_config
 from archie.services.base_download import rich_progress
+from archie.services.base_service import BaseService
+from archie.services.soundcloud import SoundCloudService
 from archie.services.youtube import YouTubeService
 from archie.utils import utils
 
-services = {
-    "youtube": YouTubeService(),
-}
+# idk
+service_list: list[BaseService] = [
+    YouTubeService(),
+    SoundCloudService(),
+]
+
+services = {}
+for service in service_list:
+    services[service.service_name.lower()] = service
 
 
 @click.group()
@@ -63,7 +71,7 @@ def add_entity(archive_name, entity_name):
         config.save()
 
     utils.log(f"Added entity '{entity_name}' to archive '{archive_name}'.")
-    utils.log(f"To add accounts to the entity, use [dim]archie add-entity-account {entity_name} [service] [link][/dim]")
+    utils.log("To add accounts to the entity, use [dim]archie add-entity-account[/dim]")
 
 
 @archie.command()
@@ -78,7 +86,7 @@ def add_entity_account(archive_name, entity_name, service, account):
     """
 
     if service not in services:
-        return utils.log(f"Service not supported. Supported services: {', '.join(services.keys())}")
+        return utils.log(f"Service '{service}' not supported. Supported services: {', '.join(services.keys())}")
 
     with load_config() as config:
         archive = utils.find(config.archives, lambda archive: archive.name == archive_name)
