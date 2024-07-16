@@ -116,7 +116,7 @@ class Config(BaseModel):
             yaml.dump(self.dump(), f, Dumper=utils.PrettyDumper, sort_keys=False)
 
     @staticmethod
-    def load(path: Path = CFG_PATH) -> Config:  # noqa: F821
+    def load(path: Path = CFG_PATH):
         if not path.exists() or path.stat().st_size == 0:
             Config().save()
 
