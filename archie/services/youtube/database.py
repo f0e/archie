@@ -94,17 +94,22 @@ def store_video_error(video_id: str, error: yt_dlp.utils.YoutubeDLError):
     # don't bother replacing the data with nothing, just update the scan time.
     # TODO: if versioning is added maybe replacing the data with nothing is better, but for now i want to retain it
 
+    db_video_fail = {
+        "_scan_time": scan_time,
+        "_scan_source": "full",
+        "error": error.msg,
+    }
+
     if not db["youtube_videos"].find_one_and_update(
         {"video.id": video_id},
-        {
-            "$set": {
-                "_scan_time": scan_time,
-                "_scan_source": "full",
-                "error": error.msg,
-            }
-        },
+        {"$set": db_video_fail},
     ):
-        db["youtube_videos"].insert_one({"_scan_time": scan_time, "video": {"id": video_id}})
+        db["youtube_videos"].insert_one(
+            {
+                **db_video_fail,
+                "video": {"id": video_id},
+            }
+        )
 
 
 def store_video(video: dict, scan_source: Literal["full", "channel", "playlist"]):
@@ -121,6 +126,7 @@ def store_video(video: dict, scan_source: Literal["full", "channel", "playlist"]
         "video": video,
     }
 
+    # TODO: store comments in separate collection like soundcloud?
     # if "comments" in video and video["comments"]:
     #     # del db_video["video"]["comments"]
     #     for comment in video["comments"]:
@@ -179,6 +185,13 @@ def get_playlist_to_parse(min_update_time: datetime):
 
 def get_video_to_parse(min_update_time: datetime):
     pipeline = [
+        {
+            "$match": {
+                "error": {
+                    "$exists": False,
+                }
+            }
+        },
         {
             "$match": {
                 "$or": [

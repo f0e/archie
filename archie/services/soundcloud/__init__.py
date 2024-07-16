@@ -2,7 +2,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Set
+from typing import Set, cast
 
 from soundcloud import SoundCloud
 
@@ -32,7 +32,7 @@ class SoundCloudService(BaseService):
     def service_name(self):
         return "SoundCloud"
 
-    def get_account_url_from_id(self, id: str):
+    def get_account_url_from_id(self, id: int):
         user = sc.get_user(id)
         return user.permalink_url if user else None
 
@@ -40,6 +40,9 @@ class SoundCloudService(BaseService):
         # TODO: i don't like this at all but it seems to work? if it doesn't then change how this stuff works
         username = link.split("soundcloud.com/")[-1].split("/")[0]
         user = sc.get_user_by_username(username)
+        if not user:
+            return None
+
         return user.id
 
     def run(self, config: Config):
@@ -69,11 +72,15 @@ class SoundCloudService(BaseService):
             else:
                 log(f"parsing user ({account.id})")
 
-            user = sc.get_user(account.id)
+            user = sc.get_user(cast(int, account.id))
+            if not user:
+                # TODO: handle
+                log(f"failed to parse user ({account.id})")
+                continue
 
             tracks = list(sc.get_user_tracks(user.id, limit=80000))
             playlists = list(sc.get_user_playlists(user.id, limit=80000))
-            links = sc.get_user_links(user.id)
+            links = sc.get_user_links(user.urn)
             reposts = list(sc.get_user_reposts(user.id, limit=80000))
 
             db.store_user(user, "full", "accepted", tracks, playlists, links, reposts)
@@ -87,20 +94,15 @@ class SoundCloudService(BaseService):
 
             log(f"parsing track ({track_id})")
             track = sc.get_track(track_id)
+            if not track:
+                # failed to dl, edge case, store it in db
+                db.store_track_error(db_track["track"]["id"], "get_track fail")
+                continue
 
-            log(f"parsing albums | {track.user.username} - {track.title} ({track_id})")
             albums = list(sc.get_track_albums(track_id, limit=80000))
-
-            log(f"parsing comments | {track.user.username} - {track.title} ({track_id})")
             comments = list(sc.get_track_comments(track_id, limit=80000))
-
-            log(f"parsing likers | {track.user.username} - {track.title} ({track_id})")
             likers = list(sc.get_track_likers(track_id, limit=80000))
-
-            log(f"parsing reposters | {track.user.username} - {track.title} ({track_id})")
             reposters = list(sc.get_track_reposters(track_id, limit=80000))
-
-            log(f"parsing playlists | {track.user.username} - {track.title} ({track_id})")
             playlists = list(sc.get_track_playlists(track_id, limit=80000))
 
             db.store_track(track, "full", albums, comments, likers, reposters, playlists)
@@ -169,6 +171,8 @@ class SoundCloudService(BaseService):
             # hate this but its cause internally scdl needs proper types. TODO: figure out workaround
             sc_user = sc.get_user(user["user"]["id"])
             sc_track = sc.get_track(track["track"]["id"])
+
+            assert sc_user and sc_track, "TODO: fix this"
 
             download_data = download_track(sc_user, sc_track, download_path)
 

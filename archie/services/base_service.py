@@ -8,7 +8,7 @@ class BaseService(ABC):
         pass
 
     @abstractmethod
-    def get_account_url_from_id(self, id: str) -> str:
+    def get_account_url_from_id(self, id) -> str:
         pass
 
     @abstractmethod

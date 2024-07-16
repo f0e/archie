@@ -180,19 +180,15 @@ class YouTubeAPI:
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
-            max_retries = 5
-            data = utils.retryable(
-                lambda: yt.extract_info(f"https://www.youtube.com/watch?v={video['id']}", download=True),
-                lambda: self._log(f"failed to download video '{video['title']}', retrying... ({video['id']})"),
-                max_retries=max_retries,
-            )
+            try:
+                data = yt.extract_info(f"https://www.youtube.com/watch?v={video['id']}", download=True)
+            except yt_dlp.utils.DownloadError:
+                self._log(f"failed to download video '{video['title']}', skipping. ({video['id']})")
+                return None
+            finally:
+                finish_progress(video)
 
             self._log("finished download for", video["title"])
-            finish_progress(video)
-
-            if not data:
-                self._log(f"download for video '{video['title']}' failed after {max_retries} retries, skipping. ({video['id']})")
-                return None
 
             download_data = data["requested_downloads"][0]
 
