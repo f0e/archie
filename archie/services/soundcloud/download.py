@@ -64,7 +64,13 @@ def download_track(user: soundcloud.User, track: soundcloud.BasicTrack, download
 
         # TODO: check if already downloaded?
 
-        args = scdl.SCDLArgs(opus=True, original_metadata=True, hide_progress=True, name_format="-")
+        args = scdl.SCDLArgs(
+            opus=True,
+            original_metadata=True,
+            hide_progress=True,
+            name_format="-",
+            debug=False,
+        )
 
         # Get the requests stream
         url = scdl.get_transcoding_m3u8(sc.sc, transcoding, args)
@@ -110,7 +116,7 @@ class ProgressBar:
             service="soundcloud",
             author=user.username,
             title=track.title,
-            duration=track.duration,
+            duration=track.duration / 1000,
             start=True,
             total=None,
         )

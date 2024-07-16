@@ -90,6 +90,27 @@ def store_user(
         db["soundcloud_users"].insert_one(db_user)
 
 
+def store_track_error(track_id: int, error_msg: str):
+    scan_time = datetime.now(timezone.utc)
+
+    db_track_fail = {
+        "_scan_time": scan_time,
+        "_scan_source": "full",
+        "error": error_msg,
+    }
+
+    if not db["soundcloud_tracks"].find_one_and_update(
+        {"track.id": track_id},
+        {"$set": db_track_fail},
+    ):
+        db["soundcloud_tracks"].insert_one(
+            {
+                **db_track_fail,
+                "track": {"id": track_id},
+            }
+        )
+
+
 def get_track(track_id: int):
     return db["soundcloud_tracks"].find_one({"track.id": track_id})
 
@@ -210,6 +231,13 @@ def store_playlist(playlist: soundcloud.BasicAlbumPlaylist):
 
 def get_track_to_parse(min_update_time: datetime):
     pipeline = [
+        {
+            "$match": {
+                "error": {
+                    "$exists": False,
+                }
+            }
+        },
         {
             "$match": {
                 "$or": [
