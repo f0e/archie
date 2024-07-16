@@ -18,7 +18,6 @@ classifiers = [
 python = "^3.10"
 click = "^8.1.7"
 yt-dlp = "^2024.7.7"
-requests = "^2.31.0"
 pydantic = "^2.3.0"
 pyyaml = "^6.0.1"
 rich = "^13.5.2"
@@ -29,7 +28,6 @@ scdl = "^2.11.0"
 pymongo = "^4.8.0"
 
 [tool.poetry.group.dev.dependencies]
-types-requests = "^2.31.0.2"
 types-pyyaml = "^6.0.12.11"
 ruff = "^0.5.1"
 pre-commit = "^3.7.1"

@@ -1,7 +1,6 @@
 import time
 from urllib.parse import urlparse
 
-import requests
 import yaml
 from rich.style import Style
 
@@ -46,16 +45,6 @@ def find(iterable, pred):
         if pred(element):
             return element
     return None
-
-
-def download_image(url):
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        return response.content
-    else:
-        log(f"Failed to download image from URL: {url}")
-        return None
 
 
 class PrettyDumper(yaml.Dumper):
