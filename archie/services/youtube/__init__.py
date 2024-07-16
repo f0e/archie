@@ -2,15 +2,18 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Set
+from typing import Set, cast
 
-from archie.config import Account, Config
+from archie.config import Config
 from archie.services.base_download import copy_download
 from archie.services.base_service import BaseService
 from archie.services.youtube.api import YouTubeAPI
 from archie.utils import utils
 
 from . import database as db
+
+# TODO: check if downloaded videos arent added in archive anymore and delete/move
+# TODO: consistency around logging - e.g. apostrophes around names
 
 
 def log(*args, **kwargs):
@@ -22,6 +25,7 @@ class YouTubeService(BaseService):
 
     _current_downloads: Set[str] = set()
     _current_downloads_lock = threading.Lock()
+    _fail_list: Set[str] = set()
 
     @property
     def service_name(self):
@@ -34,15 +38,21 @@ class YouTubeService(BaseService):
         return self.api.get_channel_id_from_url(link)
 
     def run(self, config: Config):
+        threading.Thread(target=self._background, daemon=True).start()
         threading.Thread(target=self._check_downloads, args=(config,), daemon=True).start()
+        threading.Thread(target=self._parse, args=(config,), daemon=True).start()
 
         for i in range(5):
             threading.Thread(target=self._download_videos, args=(config,), daemon=True).start()
 
-        threading.Thread(target=self._parse, args=(config,), daemon=True).start()
+    def _background(self):
+        while True:
+            db.update_indexes()
+            time.sleep(10)
 
     def _check_downloads(self, config: Config):
-        for video_id, download in db.get_downloads():
+        for download in db.get_downloads():
+            video_id = download["video_id"]
             path = Path(download["path"])
 
             # remove deleted downloads
@@ -61,13 +71,12 @@ class YouTubeService(BaseService):
 
     def _download_videos(self, config: Config):  # TODO: some of this can be generalised most likely
         while True:
-            with self._current_downloads_lock:  # todo should this be looping over archives first idk
-                video = db.get_undownloaded_video(list(self._current_downloads))
+            with self._current_downloads_lock:  # TODO: should this be looping over archives first idk
+                video = db.get_undownloaded_video(list(self._current_downloads.union(self._fail_list)))
 
                 if video:
                     video_data = video["video"]
                     self._current_downloads.add(video_data["id"])
-                    log(f"added {video_data['id']} to set")
 
             if not video:
                 time.sleep(1)
@@ -92,11 +101,11 @@ class YouTubeService(BaseService):
 
             with self._current_downloads_lock:
                 self._current_downloads.remove(video_data["id"])
-                log(f"removed {video_data['id']} from set")
 
             if not downloaded_video_data:
                 # download somehow failed 5 times, skip it
-                # todo: actually skip it, right now it'll just try to download it again
+                self._fail_list.add(video_data["id"])
+                # todo: actually skip it properly
                 continue
 
             db.store_download(
@@ -113,82 +122,70 @@ class YouTubeService(BaseService):
 
             log(f"finished downloading {video_data['title']} (format {downloaded_video_data.format})")
 
-    def __parse_account(self, account: Account):
-        # new account, parse
-        log("getting channel", account.id)
-
-        res = self.api.get_channel(account.id)
-        if res is None:
-            raise Exception("Failed to parse channel. TODO: just silently log")
-
-        channel, channel_videos = res
-        channel_playlists = self.api.get_channel_playlists(account.id)
-
-        db.store_channel(channel, channel_videos, channel_playlists, "full", "accepted")
-
-        for channel_playlist_data in channel_playlists:
-            if db.get_playlist(channel_playlist_data["id"]):
-                log("already added playlist", account.id)
-                continue
-
-            playlist, videos = self.api.get_playlist(channel_playlist_data["id"])
-
-            db.store_playlist(playlist, videos, "full", "queued")
-
     def __parse_channels(self, config: Config):  # TODO: some of this can be generalised most likely
-        for account, entity, archive in config.get_accounts(self.service_name):
-            channel_min_update_time = datetime.now(timezone.utc) - timedelta(
-                hours=archive.services.youtube.channel_update_gap_hours
-            )
+        channel_min_update_time = datetime.now(timezone.utc) - timedelta(hours=config.services.youtube.channel_update_gap_hours)
 
+        for account, entity, archive in config.get_accounts(self.service_name):
             # todo: check status accepted here
 
             # check if already parsed
-            channel = db.get_channel(account.id)
-            if channel:
-                channel_scan_time = datetime.fromisoformat(channel["meta"]["scan_time"])
-                if channel_scan_time > channel_min_update_time:
+            db_channel = db.get_channel(cast(str, account.id))
+            if db_channel:
+                # TODO: move this stuff into aggregation?
+                if db_channel["_scan_source"] == "full" and db_channel["_scan_time"] > channel_min_update_time:
                     continue
 
-                log(f"updating channel {channel['channel']['title']} ({account.id})")
+                log(f"updating channel {db_channel['channel']['channel']} ({account.id})")
             else:
                 log(f"parsing channel ({account.id})")
 
-            self.__parse_account(account)
-
-    def __parse_videos(self, config: Config):
-        for account, entity, archive in config.get_accounts(self.service_name):
-            channel = db.get_channel(account.id)
-            if not channel:
+            res = self.api.get_channel_and_videos(account.id)
+            if res is None:
+                # failed to parse channel, probably deleted or something TODO: more handling
                 continue
 
-            video_min_update_time = datetime.now(timezone.utc) - timedelta(hours=archive.services.youtube.video_update_gap_hours)
+            channel, channel_videos = res
+            channel_playlists = self.api.get_channel_playlists(account.id)
 
-            for basic_video_data in channel["videos"]:
-                video = db.get_video(basic_video_data["id"])
+            db.store_channel(channel, channel_videos, channel_playlists, "full", "accepted")
 
-                if video:
-                    video_scan_time = datetime.fromisoformat(video["meta"]["scan_time"])
-                    if video_scan_time > video_min_update_time:
-                        continue
+            log(f"parsed channel {channel['channel']} ({account.id})")
 
-                    log(f"updating video '{video['video']['title']}' ({basic_video_data['id']})")
-                else:
-                    log(f"parsing video ({basic_video_data['id']})")
+    def __parse_playlists(self, config: Config):
+        playlist_min_update_time = datetime.now(timezone.utc) - timedelta(hours=config.services.youtube.playlist_update_gap_hours)
 
-                log(f"getting video data for {basic_video_data['title']}")
+        for db_playlist in db.get_playlist_to_parse(playlist_min_update_time):
+            log(f"parsing playlist ({db_playlist['playlist']['id']})")
 
-                video = self.api.get_video_data(basic_video_data["id"])
-                db.store_video(video)
+            # TODO: just parse the first page of the playlist to get the "Last updated" date, and check that to see if it's worth parsing the whole thing. if no videos were added/removed then no point. unless videos were made unprivate..
+            playlist, videos = self.api.get_playlist(db_playlist["playlist"]["id"])
 
-                if "comments" in video:
-                    log(f"parsed video details, got {len(video['comments'])} comments")
-                else:
-                    log("parsed video details, got no comments")
+            db.store_playlist(playlist, videos, "full", "queued")
+
+            log(f"parsed playlist {playlist['title']} - {len(videos)} videos ({playlist['id']})")
+
+    def __parse_videos(self, config: Config):
+        video_min_update_time = datetime.now(timezone.utc) - timedelta(hours=config.services.youtube.video_update_gap_hours)
+
+        for db_video in db.get_video_to_parse(video_min_update_time):
+            log(f"parsing video ({db_video['video']['id']})")
+
+            video, error = self.api.get_video_data(db_video["video"]["id"])
+            if not video and error:
+                # failed to dl, edge case, store it in db
+                db.store_video_error(db_video["video"]["id"], error)
+                continue
+
+            assert video  # Dumb mypy
+
+            db.store_video(video, "full")
+
+            log(f"parsed video {video['title']} ({video['id']})")
 
     def _parse(self, config: Config):
         while True:
             self.__parse_channels(config)
+            self.__parse_playlists(config)
             self.__parse_videos(config)
 
             time.sleep(1)

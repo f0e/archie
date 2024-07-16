@@ -12,6 +12,8 @@ from archie.utils import utils
 from ._filter import filter_video
 from .download import finish_progress, progress_hooks, start_progress
 
+# TODO: fix yt-dlp output breaking rich printing
+
 
 @dataclass
 class DownloadedVideo:
@@ -40,25 +42,20 @@ class YouTubeAPI:
             utils.module_log("youtube api (spider)", "magenta", *args, **kwargs)
 
     def get_channel_id_from_url(self, account_link: str) -> str | None:
-        ydl_opts = {
-            "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
-            "quiet": True,
-            "no_warnings": True,
-        }
+        res = self.get_channel_and_videos(account_link)
+        if not res:
+            return None
 
-        with yt_dlp.YoutubeDL(ydl_opts) as yt:
-            try:
-                data = yt.extract_info(account_link, download=False, process=False)
-                return data["id"]
-            except Exception as e:  # TODO: get actual exception type and handle other errors differently?
-                self._log("Failed to get account id from url '{account_link}'")
-                self._log(e)
-                return None
+        channel, videos = res
+        return channel["id"]
 
-    def get_channel_url_from_id(self, account_id):
+    def get_channel_url_from_id(self, account_id: str):
+        if account_id.startswith("@"):
+            raise Exception("bug somewhere which is using @ usernames for yt")
+
         return f"https://youtube.com/channel/{account_id}"
 
-    def get_channel(self, account_id, from_spider: bool = False) -> Tuple[dict, list] | None:
+    def get_channel_and_videos(self, account_id, from_spider: bool = False) -> Tuple[dict, list] | None:
         ydl_opts = {
             "extract_flat": True,  # don't parse individual videos, just get the data available from the /videos page
             "quiet": True,
@@ -71,6 +68,9 @@ class YouTubeAPI:
                 data = yt.extract_info(
                     f"{channel_link}/videos", download=False
                 )  # note: fetching videos page instead of about page since i'm fairly certain (need to re-check) that they return the same data, just with videos also having videos
+                data["id"] = data.pop(
+                    "channel_id"
+                )  # id is wrong and uses @usernames just replace it with channel_id which is proper
                 videos = data.pop("entries")
                 return data, videos
             except yt_dlp.utils.DownloadError as e:
@@ -90,7 +90,7 @@ class YouTubeAPI:
                     else:
                         raise e
 
-    def get_video_data(self, video_id: str, spider: bool = False):
+    def get_video_data(self, video_id: str, spider: bool = False) -> Tuple[dict, None] | Tuple[None, yt_dlp.utils.YoutubeDLError]:
         # gets all info and commenters for a video
 
         ydl_opts = {
@@ -101,13 +101,16 @@ class YouTubeAPI:
         video_link = f"https://www.youtube.com/watch?v={video_id}"
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
-            data = yt.extract_info(video_link, download=False)
+            try:
+                data = yt.extract_info(video_link, download=False)
 
-            if filter_video(data):
-                # todo: what to do when the video's already been added
-                pass
+                if filter_video(data):
+                    # todo: what to do when the video's already been added
+                    pass
 
-            return data
+                return data, None
+            except yt_dlp.utils.DownloadError as e:
+                return None, e  # idk if this is good way to do this
 
     def get_channel_playlists(self, account_id):
         ydl_opts = {
@@ -115,7 +118,7 @@ class YouTubeAPI:
             "extract_flat": True,  # don't parse individual playlists
         }
 
-        playlist_link = f"https://www.youtube.com/channel/{account_id}/playlists"
+        playlist_link = self.get_channel_url_from_id(account_id) + "/playlists"
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             try:
@@ -133,7 +136,9 @@ class YouTubeAPI:
     def get_playlist(self, playlist_id: str):
         ydl_opts = {
             "quiet": True,
+            "loglevel": "panic",
             "extract_flat": True,  # don't parse individual videos. also get videos that are unavailable
+            "external_downloader_args": ["-loglevel", "panic"],
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as yt:

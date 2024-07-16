@@ -1,31 +1,21 @@
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from redis import Redis
+import yt_dlp
 
-from archie.services.base_redis import get_undownloaded_id
-
-r = Redis(host="localhost", port=6379, decode_responses=True)
+from ..base_mongo import db
 
 
-def store(key, data_json):
-    return r.set(key, json.dumps(data_json, default=str))
+def update_indexes():
+    db["youtube_channels"].create_index("channel.id", unique=True)
+    db["youtube_videos"].create_index("video.id", unique=True)
+    db["youtube_playlists"].create_index("playlist.id", unique=True)
+    db["youtube_video_downloads"].create_index("video_id")
 
 
-def get(key):
-    data = r.get(key)
-    if not data:
-        return data
-
-    return json.loads(data)
-
-
-def get_channel(channel_id):
-    key = f"youtube:channel:{channel_id}"
-
-    return get(key)
+def get_channel(channel_id: str):
+    return db["youtube_channels"].find_one({"channel.id": channel_id})
 
 
 def store_channel(
@@ -35,95 +25,266 @@ def store_channel(
     scan_source: Literal["full", "comment"],
     status: Literal["accepted", "queued", "rejected"],
 ):
-    key = f"youtube:channel:{channel['id']}"
+    existing_db_channel = get_channel(channel["id"])
+    # check to see if the user has already been added, and has been scanned fully.
+    # if we're about to replace it with a partial scan then return.
+    # TODO: could potentially update the user component only, since it might have changed, but i'd rather keep it simple for now
+    if existing_db_channel and existing_db_channel["_scan_source"] == "full" and scan_source != "full":
+        return
 
-    store(
-        key,
-        {
-            "meta": {
-                "scan_source": scan_source,
-                "status": status,
-                "scan_time": datetime.now(timezone.utc),
-                # todo: add archie version to everything?
-            },
-            "channel": channel,
-            "videos": videos,
-            "playlists": playlists,
-        },
-    )
+    db_channel = {
+        "_scan_source": scan_source,
+        "_status": status if not existing_db_channel else existing_db_channel["_status"],
+        "_scan_time": datetime.now(timezone.utc),
+        "channel": channel,
+    }
+
+    db_channel["video_ids"] = []
+    for video in videos:
+        db_channel["video_ids"].append(video["id"])
+        store_video(video, "channel")
+
+    db_channel["playlist_ids"] = []
+    for playlist in playlists:
+        db_channel["playlist_ids"].append(playlist["id"])
+        store_playlist(playlist, [], "channel", "queued")
+
+    if not db["youtube_channels"].find_one_and_replace({"channel.id": channel["id"]}, db_channel):
+        db["youtube_channels"].insert_one(db_channel)
 
 
 def get_playlist(playlist_id: str):
-    key = f"youtube:playlist:{playlist_id}"
-
-    return get(key)
+    return db["youtube_playlists"].find_one({"playlist.id": playlist_id})
 
 
 def store_playlist(
-    playlist: dict, videos: list[dict], scan_source: Literal["full"], status: Literal["accepted", "queued", "rejected"]
+    playlist: dict, videos: list[dict], scan_source: Literal["full", "channel"], status: Literal["accepted", "queued", "rejected"]
 ):
-    key = f"youtube:playlist:{playlist['id']}"
+    existing_db_playlist = get_playlist(playlist["id"])
+    # check to see if the user has already been added, and has been scanned fully.
+    # if we're about to replace it with a partial scan then return.
+    # TODO: could potentially update the user component only, since it might have changed, but i'd rather keep it simple for now
+    if existing_db_playlist and existing_db_playlist["_scan_source"] == "full" and scan_source != "full":
+        return
 
-    store(
-        key,
-        {
-            "meta": {"scan_source": scan_source, "status": status, "scan_time": datetime.now(timezone.utc)},
-            "playlist": playlist,
-            "videos": videos,
-        },
-    )
+    db_playlist = {
+        "_scan_source": scan_source,
+        "_status": status if not existing_db_playlist else existing_db_playlist["_status"],
+        "_scan_time": datetime.now(timezone.utc),
+        "playlist": playlist,
+    }
+
+    db_playlist["video_ids"] = []
+    for video in videos:
+        db_playlist["video_ids"].append(video["id"])
+        store_video(video, "playlist")
+
+    if not db["youtube_playlists"].find_one_and_replace({"playlist.id": playlist["id"]}, db_playlist):
+        db["youtube_playlists"].insert_one(db_playlist)
 
 
 def get_video(video_id: str):
-    key = f"youtube:video:{video_id}"
-
-    return get(key)
+    return db["youtube_videos"].find_one({"video.id": video_id})
 
 
-def store_video(video: dict):
-    key = f"youtube:video:{video['id']}"
+def store_video_error(video_id: str, error: yt_dlp.utils.YoutubeDLError):
+    scan_time = datetime.now(timezone.utc)
 
-    store(
-        key,
+    # parsing video failed. if we got to this point then it *was* fully parsed, it just didn't return anything useful
+    # don't bother replacing the data with nothing, just update the scan time.
+    # TODO: if versioning is added maybe replacing the data with nothing is better, but for now i want to retain it
+
+    if not db["youtube_videos"].find_one_and_update(
+        {"video.id": video_id},
         {
-            "meta": {"scan_time": datetime.now(timezone.utc)},
-            "video": video,
+            "$set": {
+                "_scan_time": scan_time,
+                "_scan_source": "full",
+                "error": error.msg,
+            }
         },
-    )
+    ):
+        db["youtube_videos"].insert_one({"_scan_time": scan_time, "video": {"id": video_id}})
+
+
+def store_video(video: dict, scan_source: Literal["full", "channel", "playlist"]):
+    existing_db_video = get_video(video["id"])
+    # check to see if the user has already been added, and has been scanned fully.
+    # if we're about to replace it with a partial scan then return.
+    # TODO: could potentially update the user component only, since it might have changed, but i'd rather keep it simple for now
+    if existing_db_video and existing_db_video["_scan_source"] == "full" and scan_source != "full":
+        return
+
+    db_video = {
+        "_scan_source": scan_source,
+        "_scan_time": datetime.now(timezone.utc),
+        "video": video,
+    }
+
+    # if "comments" in video and video["comments"]:
+    #     # del db_video["video"]["comments"]
+    #     for comment in video["comments"]:
+    #         store_channel(
+    #             {
+    #                 "id": comment["author_id"],
+    #                 "author": comment["author"],
+    #                 "author_thumbnail": comment["author_thumbnail"],
+    #                 "timestamp": comment["timestamp"],
+    #             },
+    #             [],
+    #             [],
+    #             "comment",
+    #             "queued",
+    #         )
+
+    if not db["youtube_videos"].find_one_and_replace({"video.id": video["id"]}, db_video):
+        db["youtube_videos"].insert_one(db_video)
+
+
+def get_playlist_to_parse(min_update_time: datetime):
+    pipeline = [
+        {
+            "$match": {
+                "$or": [
+                    {
+                        "_scan_source": {
+                            "$ne": "full",
+                        },
+                    },
+                    {
+                        "_scan_time": {
+                            "$lt": min_update_time,
+                        }
+                    },
+                ]
+            }
+        },
+        {
+            "$lookup": {
+                "from": "youtube_channels",
+                "localField": "playlist.channel_id",
+                "foreignField": "channel.id",
+                "as": "channel_info",
+            }
+        },
+        {
+            "$match": {
+                "channel_info._status": "accepted",
+            }
+        },
+    ]
+
+    return db["youtube_playlists"].aggregate(pipeline)
+
+
+def get_video_to_parse(min_update_time: datetime):
+    pipeline = [
+        {
+            "$match": {
+                "$or": [
+                    {
+                        "_scan_source": {
+                            "$ne": "full",
+                        },
+                    },
+                    {
+                        "_scan_time": {
+                            "$lt": min_update_time,
+                        }
+                    },
+                ]
+            }
+        },
+        {
+            "$lookup": {
+                "from": "youtube_channels",
+                "localField": "video.channel_id",
+                "foreignField": "channel.id",
+                "as": "channel_info",
+            }
+        },
+        {
+            "$match": {
+                "channel_info._status": "accepted",
+            }
+        },
+    ]
+
+    return db["youtube_videos"].aggregate(pipeline)
 
 
 def get_undownloaded_video(skip_ids: list[str]):
-    undownloaded_id = get_undownloaded_id(r, "youtube", "video", skip_ids)
-    if not undownloaded_id:
-        return None
+    pipeline = [
+        {
+            "$match": {
+                "_scan_source": "full",
+                "video.id": {
+                    "$nin": skip_ids,
+                },
+                "video.duration": {
+                    "$lt": 130,
+                },
+            }
+        },
+        {
+            "$lookup": {
+                "from": "youtube_channels",
+                "localField": "video.channel_id",
+                "foreignField": "channel.id",
+                "as": "channel_info",
+            }
+        },
+        {
+            "$match": {
+                "channel_info._status": "accepted",
+            }
+        },
+        {
+            "$lookup": {
+                "from": "youtube_video_downloads",
+                "localField": "video.id",
+                "foreignField": "video_id",
+                "as": "download_info",
+            }
+        },
+        {
+            "$match": {
+                "download_info": {
+                    "$eq": [],
+                }
+            }
+        },
+        {
+            "$project": {
+                "download_info": 0,
+            }
+        },
+        {
+            "$limit": 1,
+        },
+    ]
 
-    return get_video(undownloaded_id)
+    res = db["youtube_videos"].aggregate(pipeline)
+
+    return next(res, None)
 
 
 def store_download(video_id: str, path: Path, relative_video_path: Path, format: str):
-    key = f"youtube:download:{video_id}"
+    db_download = {
+        "_download_time": datetime.now(timezone.utc),
+        "video_id": video_id,
+        "path": str(path),
+        "relative_video_path": str(relative_video_path),
+        "format": format,
+    }
 
-    store(
-        key,
-        {
-            "meta": {"download_time": datetime.now(timezone.utc)},
-            "path": path,
-            "relative_video_path": relative_video_path,
-            "format": format,
-        },
-    )
+    db["youtube_video_downloads"].insert_one(db_download)
 
 
 def get_downloads():
-    all_downloads = r.keys("youtube:download:*")
-
-    for download_key in all_downloads:
-        video_id = download_key.split(":")[-1]
-
-        yield video_id, get(download_key)
+    for download in db["youtube_video_downloads"].find():
+        yield download
 
 
-def remove_download(video_id: str):
-    key = f"youtube:download:{video_id}"
-
-    r.delete(key)
+def remove_download(mongo_id: str):
+    db["youtube_video_downloads"].delete_one({"_id": mongo_id})

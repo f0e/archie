@@ -43,16 +43,12 @@ class SoundCloudService(BaseService):
         return user.id
 
     def run(self, config: Config):
-        log("starting")
-
         threading.Thread(target=self._background, daemon=True).start()
-
         threading.Thread(target=self._check_downloads, args=(config,), daemon=True).start()
+        threading.Thread(target=self._parse, args=(config,), daemon=True).start()
 
         for i in range(5):
             threading.Thread(target=self._download_tracks, args=(config,), daemon=True).start()
-
-        threading.Thread(target=self._parse, args=(config,), daemon=True).start()
 
     def _background(self):
         while True:
@@ -60,11 +56,12 @@ class SoundCloudService(BaseService):
             time.sleep(10)
 
     def __parse_users(self, config: Config):
-        for account, entity, archive in config.get_accounts(self.service_name):
-            user_min_update_time = datetime.now(timezone.utc) - timedelta(hours=archive.services.soundcloud.user_update_gap_hours)
+        user_min_update_time = datetime.now(timezone.utc) - timedelta(hours=config.services.soundcloud.user_update_gap_hours)
 
+        for account, entity, archive in config.get_accounts(self.service_name):
             db_user = db.get_user(account.id)
             if db_user:
+                # TODO: move this stuff into aggregation?
                 if db_user["_scan_source"] == "full" and db_user["_scan_time"] > user_min_update_time:
                     continue
 
@@ -83,45 +80,31 @@ class SoundCloudService(BaseService):
             log(f"parsed user {user.username} ({user.id})")
 
     def __parse_tracks(self, config: Config):
-        for account, entity, archive in config.get_accounts(self.service_name):
-            user = db.get_user(account.id)
-            if not user:
-                continue
+        track_min_update_time = datetime.now(timezone.utc) - timedelta(hours=config.services.soundcloud.track_update_gap_hours)
 
-            track_min_update_time = datetime.now(timezone.utc) - timedelta(
-                hours=archive.services.soundcloud.track_update_gap_hours
-            )
+        for db_track in db.get_track_to_parse(track_min_update_time):
+            track_id = db_track["track"]["id"]
 
-            for i, track_id in enumerate(user["tracks"]):
-                db_track = db.get_track(track_id)  # TODO: this might be super inefficient, see if u can just get meta
+            log(f"parsing track ({track_id})")
+            track = sc.get_track(track_id)
 
-                if db_track:
-                    if db_track["_scan_source"] == "full" and db_track["_scan_time"] > track_min_update_time:
-                        continue
+            log(f"parsing albums | {track.user.username} - {track.title} ({track_id})")
+            albums = list(sc.get_track_albums(track_id, limit=80000))
 
-                    log(f"({i+1}/{len(user['tracks'])}) updating track id {track_id}")
-                else:
-                    log(f"({i+1}/{len(user['tracks'])}) parsing track id {track_id}")
+            log(f"parsing comments | {track.user.username} - {track.title} ({track_id})")
+            comments = list(sc.get_track_comments(track_id, limit=80000))
 
-                track = sc.get_track(track_id)
+            log(f"parsing likers | {track.user.username} - {track.title} ({track_id})")
+            likers = list(sc.get_track_likers(track_id, limit=80000))
 
-                log(f"parsing albums | {track.user.username} - {track.title} ({track_id})")
-                albums = list(sc.get_track_albums(track_id, limit=80000))
+            log(f"parsing reposters | {track.user.username} - {track.title} ({track_id})")
+            reposters = list(sc.get_track_reposters(track_id, limit=80000))
 
-                log(f"parsing comments | {track.user.username} - {track.title} ({track_id})")
-                comments = list(sc.get_track_comments(track_id, limit=80000))
+            log(f"parsing playlists | {track.user.username} - {track.title} ({track_id})")
+            playlists = list(sc.get_track_playlists(track_id, limit=80000))
 
-                log(f"parsing likers | {track.user.username} - {track.title} ({track_id})")
-                likers = list(sc.get_track_likers(track_id, limit=80000))
-
-                log(f"parsing reposters | {track.user.username} - {track.title} ({track_id})")
-                reposters = list(sc.get_track_reposters(track_id, limit=80000))
-
-                log(f"parsing playlists | {track.user.username} - {track.title} ({track_id})")
-                playlists = list(sc.get_track_playlists(track_id, limit=80000))
-
-                db.store_track(track, "full", albums, comments, likers, reposters, playlists)
-                log(f"parsed {track.user.username} - {track.title} ({track_id})")
+            db.store_track(track, "full", albums, comments, likers, reposters, playlists)
+            log(f"parsed {track.user.username} - {track.title} ({track_id})")
 
     def _parse(self, config: Config):
         while True:
@@ -132,9 +115,6 @@ class SoundCloudService(BaseService):
 
     def _check_downloads(self, config: Config):
         for download in db.get_downloads():
-            if not download:
-                continue
-
             track_id = download["track_id"]
             path = Path(download["path"])
 
@@ -163,13 +143,7 @@ class SoundCloudService(BaseService):
     def _download_tracks(self, config: Config):  # TODO: some of this can be generalised most likely
         while True:
             with self._current_downloads_lock:  # todo should this be looping over archives first idk
-                start = time.time()
                 track = db.get_undownloaded_track(list(self._current_downloads))
-                execution_time_secs = time.time() - start
-
-                if execution_time_secs > 1:
-                    # TODO: check this
-                    log(f"took {execution_time_secs} secs to find an undownloaded track, debug & optimise")
 
                 if track:
                     self._current_downloads.add(track["track"]["id"])

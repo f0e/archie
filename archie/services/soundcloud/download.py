@@ -13,8 +13,12 @@ from archie.utils import utils
 
 from ..base_download import rich_progress
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+scdl.logger.propagate = False  # Shut up
+logger = logging.getLogger("rich")
+
+
+def log(self, *args, **kwargs):
+    utils.module_log("soundcloud downloads", "dark_orange3", *args, **kwargs)
 
 
 @dataclass
@@ -83,7 +87,7 @@ def download_track(user: soundcloud.User, track: soundcloud.BasicTrack, download
         final_path = download_folder / relative_path
 
         if final_path.exists():
-            logger.info("video already exists? skipping")
+            log("track already exists? skipping")
         else:
             # move completed download
             final_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +106,13 @@ class ProgressBar:
 
     def __init__(self, user: soundcloud.User, track: soundcloud.BasicTrack):
         self.task_id = rich_progress.add_task(
-            "download", service="soundcloud", author=user.username, title=track.title, start=True, total=None
+            "download",
+            service="soundcloud",
+            author=user.username,
+            title=track.title,
+            duration=track.duration,
+            start=True,
+            total=None,
         )
 
     def __del__(self):

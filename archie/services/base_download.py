@@ -30,13 +30,14 @@ rich_progress = MyProgress(
     TaskProgressColumn(justify="right", table_column=Column(width=4)),
     BarColumn(bar_width=20, table_column=Column(width=20)),
     TextColumn(
-        "{task.fields[service]}: [bold blue]{task.fields[author]} - {task.fields[title]}",
+        "{task.fields[service]}: [bold blue]{task.fields[author]} - {task.fields[title]} ({task.fields[duration]} sec)",
         table_column=Column(ratio=1, no_wrap=True),
     ),
     TimeRemainingColumn(table_column=Column(width=10)),
     DownloadColumn(table_column=Column(width=15)),
     console=console,
     expand=True,
+    # disable=True,
 )
 
 # TODO: move more of the code here from youtube, give generic methods for stuff
