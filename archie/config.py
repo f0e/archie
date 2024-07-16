@@ -34,6 +34,7 @@ class SpiderFilterOptions(BaseModel):
 
 class YouTubeOptions(BaseModel):
     channel_update_gap_hours: int = 24
+    playlist_update_gap_hours: int = 24
     video_update_gap_hours: int = 24 * 7
 
 
@@ -96,14 +97,16 @@ class ArchiveConfig(BaseModel):
     name: str
     entities: list[Entity] = []
 
-    filters: FilterOptions = FilterOptions()
-    services: ServiceOptions = ServiceOptions()
+    # filters: FilterOptions = FilterOptions()
     downloads: DownloadOptions = DownloadOptions()
-    spider: SpiderOptions = SpiderOptions()
+    # spider: SpiderOptions = SpiderOptions()
 
 
 class Config(BaseModel):
     archives: list[ArchiveConfig] = []
+    services: ServiceOptions = (
+        ServiceOptions()
+    )  # TODO: move this back to archive-specific, but it makes things a bit more complicated in queries
 
     def dump(self):
         return self.model_dump()
@@ -113,7 +116,7 @@ class Config(BaseModel):
             yaml.dump(self.dump(), f, Dumper=utils.PrettyDumper, sort_keys=False)
 
     @staticmethod
-    def load(path: Path = CFG_PATH):
+    def load(path: Path = CFG_PATH) -> Config:  # noqa: F821
         if not path.exists() or path.stat().st_size == 0:
             Config().save()
 
@@ -134,8 +137,6 @@ class Config(BaseModel):
                 for account in entity.accounts:
                     if account.service == service and account.id == id:
                         yield archive
-
-        return []
 
     def get_accounts(self, service: str) -> Iterator[Tuple[Account, Entity, ArchiveConfig]]:
         for archive in self.archives:

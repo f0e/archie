@@ -4,27 +4,25 @@ from pathlib import Path
 from typing import Literal
 
 import soundcloud
-from pymongo import MongoClient
 
-# TODO: store in config(?)
-client = MongoClient("localhost", 27017, tz_aware=True)
-db = client.get_database("archie")
+from ..base_mongo import db
 
 
 def get_user(user_id):
     return db["soundcloud_users"].find_one({"user.id": user_id})
 
 
+# TODO: these do not need to be vars anymore move them back into param types
 UserScanSource = Literal["full", "repost", "like", "repost", "comment", "playlist", "track"]
 UserStatus = Literal["accepted", "queued", "rejected"]
 
 
 def update_indexes():
-    db["soundcloud_comments"].create_index("comment.id", unique=True)
-    db["soundcloud_playlists"].create_index("playlist.id", unique=True)
-    db["soundcloud_track_downloads"].create_index("track_id", unique=True)
-    db["soundcloud_tracks"].create_index("track.id", unique=True)
     db["soundcloud_users"].create_index("user.id", unique=True)
+    db["soundcloud_tracks"].create_index("track.id", unique=True)
+    db["soundcloud_playlists"].create_index("playlist.id", unique=True)
+    db["soundcloud_comments"].create_index("comment.id", unique=True)
+    db["soundcloud_track_downloads"].create_index("track_id")
 
 
 def store_user(
@@ -73,14 +71,14 @@ def store_user(
         if _repost.user.id != user.id and not get_user(_repost.user.id):
             store_user(_repost.user, "repost", "queued")
 
-        if type(_repost) == soundcloud.TrackStreamRepostItem:
+        if type(_repost) is soundcloud.TrackStreamRepostItem:
             del repost["track"]  # type: ignore
             repost["track_id"] = _repost.track.id
 
             db_user["track_reposts"].append(repost)
 
             store_track(_repost.track, "repost")
-        elif type(_repost) == soundcloud.PlaylistStreamRepostItem:
+        elif type(_repost) is soundcloud.PlaylistStreamRepostItem:
             del repost["playlist"]  # type: ignore
             repost["playlist_id"] = _repost.playlist.id
 
@@ -95,20 +93,6 @@ def store_user(
 def get_track(track_id: int):
     return db["soundcloud_tracks"].find_one({"track.id": track_id})
 
-    # key = f"soundcloud:track:{track_id}"
-
-    # data = get(key)
-    # if not data:
-    #     return None
-
-    # data["albums"] = [soundcloud.BasicAlbumPlaylist.from_dict(o) for o in data["albums"]]
-    # data["comments"] = [soundcloud.BasicComment.from_dict(o) for o in data["comments"]]
-    # data["likers"] = [soundcloud.User.from_dict(o) for o in data["likers"]]
-    # data["reposters"] = [soundcloud.User.from_dict(o) for o in data["reposters"]]
-    # data["playlists"] = [soundcloud.BasicAlbumPlaylist.from_dict(o) for o in data["playlists"]]
-
-    # return DbTrack.from_dict(data)
-
 
 TrackScanSource = Literal["full", "user", "repost", "playlist"]
 
@@ -122,7 +106,7 @@ def store_track(
     reposters: list[soundcloud.User] = [],
     playlists: list[soundcloud.BasicAlbumPlaylist] = [],
 ):
-    is_mini = type(track) == soundcloud.MiniTrack
+    is_mini = type(track) is soundcloud.MiniTrack
 
     existing_db_track = get_track(track.id)
     # check to see if the track has already been added, and has been scanned fully.
@@ -224,9 +208,52 @@ def store_playlist(playlist: soundcloud.BasicAlbumPlaylist):
         db["soundcloud_playlists"].insert_one(db_playlist)
 
 
+def get_track_to_parse(min_update_time: datetime):
+    pipeline = [
+        {
+            "$match": {
+                "$or": [
+                    {
+                        "_scan_source": {
+                            "$ne": "full",
+                        },
+                    },
+                    {
+                        "_scan_time": {
+                            "$lt": min_update_time,
+                        }
+                    },
+                ]
+            }
+        },
+        {
+            "$lookup": {
+                "from": "soundcloud_users",
+                "localField": "track.user_id",
+                "foreignField": "user.id",
+                "as": "user_info",
+            }
+        },
+        {
+            "$match": {
+                "user_info._status": "accepted",
+            }
+        },
+    ]
+
+    return db["soundcloud_tracks"].aggregate(pipeline)
+
+
 def get_undownloaded_track(skip_ids: list[int]):
     pipeline = [
-        {"$match": {"_scan_source": "full", "track.id": {"$nin": skip_ids}}},
+        {
+            "$match": {
+                "_scan_source": "full",
+                "track.id": {
+                    "$nin": skip_ids,
+                },
+            }
+        },
         {
             "$lookup": {
                 "from": "soundcloud_track_downloads",
@@ -235,9 +262,21 @@ def get_undownloaded_track(skip_ids: list[int]):
                 "as": "download_info",
             }
         },
-        {"$match": {"download_info": {"$eq": []}}},
-        {"$project": {"download_info": 0}},
-        {"$limit": 1},
+        {
+            "$match": {
+                "download_info": {
+                    "$eq": [],
+                }
+            }
+        },
+        {
+            "$project": {
+                "download_info": 0,
+            }
+        },
+        {
+            "$limit": 1,
+        },
     ]
 
     res = db["soundcloud_tracks"].aggregate(pipeline)

@@ -33,7 +33,13 @@ class ProgressBar:
 
     def __init__(self, channel, video):
         self.task_id = rich_progress.add_task(
-            "download", service="youtube", author=channel["channel"], title=video["title"], start=False, total=0
+            "download",
+            service="youtube",
+            author=channel["channel"],
+            title=video["title"],
+            duration=video["duration"],
+            start=False,
+            total=0,
         )
 
     def __del__(self):
