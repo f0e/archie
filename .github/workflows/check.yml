@@ -20,5 +20,8 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
+      - name: Install poetry plugins
+        run: pipx inject poetry poetry-plugin-export
+
       - name: Run pre-commit
         run: poetry run pre-commit run --all-files
