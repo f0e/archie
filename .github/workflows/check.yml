@@ -14,10 +14,11 @@ jobs:
       - name: Set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "poetry"
+          python-version: '3.11'
+          cache: 'poetry'
 
       - name: Install dependencies
+        working-directory: components/backend
         run: poetry install
 
       # TODO: fix this!!!!!!!!!!!!!!!!!!!
