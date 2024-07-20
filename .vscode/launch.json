@@ -5,15 +5,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "archie create",
-      "type": "debugpy",
-      "request": "launch",
-      "cwd": "${workspaceFolder}",
-      "module": "archie.cli",
-
-      "args": ["create", "test1", "https://www.youtube.com/@auric32"]
-    },
-    {
       "name": "archie run",
       "type": "debugpy",
       "request": "launch",
@@ -21,6 +12,15 @@
       "module": "archie.cli",
 
       "args": ["run"]
+    },
+    {
+      "name": "archie serve",
+      "type": "debugpy",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "module": "archie.cli",
+
+      "args": ["serve"]
     }
   ]
 }
