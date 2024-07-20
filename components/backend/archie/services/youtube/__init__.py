@@ -189,3 +189,11 @@ class YouTubeService(BaseService):
             self.__parse_videos(config)
 
             time.sleep(1)
+
+    def get_account_info(self, id: str) -> BaseService.ApiAccountInfo:
+        info = BaseService.ApiAccountInfo()
+
+        channel = db.get_channel(id)
+        info.name = channel["channel"]["channel"]
+
+        return info

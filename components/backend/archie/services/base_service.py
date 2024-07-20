@@ -7,6 +7,7 @@ class BaseService(ABC):
     def service_name(self):
         pass
 
+    # cli
     @abstractmethod
     def get_account_url_from_id(self, id) -> str:
         pass
@@ -17,4 +18,12 @@ class BaseService(ABC):
 
     @abstractmethod
     def run(self, config):
+        pass
+
+    # api
+    class ApiAccountInfo:
+        name: str
+
+    @abstractmethod
+    def get_account_info(self, id) -> ApiAccountInfo:
         pass
