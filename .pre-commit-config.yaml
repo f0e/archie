@@ -1,3 +1,9 @@
+default_language_version:
+  python: python3.11
+
+default_stages: [commit, push]
+
+files: ^components/backend/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -8,7 +14,6 @@ repos:
       - id: check-toml
       - id: check-added-large-files
       - id: debug-statements
-        language_version: python3
 
   - repo: https://github.com/PyCQA/isort
     rev: 5.13.2
@@ -19,6 +24,7 @@ repos:
     rev: 24.4.2
     hooks:
       - id: black
+        # args: ['--config', 'components/backend/pyproject.toml']
 
   # - repo: https://github.com/asottile/pyupgrade
   #   rev: v3.10.1
@@ -31,18 +37,23 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-PyYAML]
+        # args: ['--config-file', 'components/backend/pyproject.toml']
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.2
     hooks:
       - id: ruff
+        # args: ['--config', 'components/backend/pyproject.toml']
 
   - repo: https://github.com/python-poetry/poetry
     rev: 1.8.3
     hooks:
       - id: poetry-check
-      - id: poetry-lock
+        args: ['--lock', '--directory=components/backend']
+      - id: poetry-lock # may be redundant with --lock
+        args: ['--directory=components/backend']
       - id: poetry-export
+        args: ['--directory=components/backend']
 
   # - repo: https://github.com/python-poetry/poetry-plugin-export
   #   rev: 1.8.0
