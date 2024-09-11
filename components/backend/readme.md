@@ -21,7 +21,7 @@
 - `archie create music`
 - `archie add-entity music [name]`
 - `archie add-entity-account music [name] soundcloud [account url]`
-- `archie run `
+- `archie run`
 
 you can also just edit
 - (windows) `~/AppData/Roaming/archie/config.yaml`
