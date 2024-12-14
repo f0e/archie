@@ -195,3 +195,11 @@ class SoundCloudService(BaseService):
                 copy_download(self.service_name, download_data.path, download_data.video_relative_path, other_archive)
 
             log(f"finished downloading {track['track']['title']} (wave {download_data.wave})")
+
+    def get_account_info(self, id: str) -> BaseService.ApiAccountInfo:
+        info = BaseService.ApiAccountInfo()
+
+        user = db.get_user(int(id))
+        info.name = user["user"]["permalink"]
+
+        return info
