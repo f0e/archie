@@ -117,7 +117,10 @@ class YouTubeService(BaseService):
 
             for other_archive in video_archives[1:]:
                 copy_download(
-                    self.service_name, downloaded_video_data.path, downloaded_video_data.video_relative_path, other_archive
+                    self.service_name,
+                    downloaded_video_data.path,
+                    downloaded_video_data.video_relative_path,
+                    other_archive,
                 )
 
             log(f"finished downloading {video_data['title']} (format {downloaded_video_data.format})")
@@ -146,6 +149,9 @@ class YouTubeService(BaseService):
 
             channel, channel_videos = res
             channel_playlists = self.api.get_channel_playlists(account.id)
+
+            for video in channel_videos:  # videos don't have it anymore? bandaid fix todo: look into this
+                video["channel_id"] = channel["id"]
 
             db.store_channel(channel, channel_videos, channel_playlists, "full", "accepted")
 

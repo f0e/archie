@@ -42,12 +42,14 @@ class YouTubeAPI:
             utils.module_log("youtube api (spider)", "magenta", *args, **kwargs)
 
     def get_channel_id_from_url(self, account_link: str) -> str | None:
-        res = self.get_channel_and_videos(account_link)
-        if not res:
-            return None
+        ydl_opts = {
+            "extract_flat": True,
+            "quiet": True,
+        }
 
-        channel, videos = res
-        return channel["id"]
+        with yt_dlp.YoutubeDL(ydl_opts) as yt:
+            data = yt.extract_info(account_link, download=False)
+            return data["id"]
 
     def get_channel_url_from_id(self, account_id: str):
         if account_id.startswith("@"):
@@ -182,7 +184,8 @@ class YouTubeAPI:
         with yt_dlp.YoutubeDL(ydl_opts) as yt:
             try:
                 data = yt.extract_info(f"https://www.youtube.com/watch?v={video['id']}", download=True)
-            except yt_dlp.utils.DownloadError:
+            except yt_dlp.utils.DownloadError as e:
+                print(e)
                 self._log(f"failed to download video '{video['title']}', skipping. ({video['id']})")
                 return None
             finally:

@@ -234,9 +234,9 @@ def get_undownloaded_video(skip_ids: list[str]):
                 "video.id": {
                     "$nin": skip_ids,
                 },
-                "video.duration": {
-                    "$lt": 130,
-                },
+                # "video.duration": {
+                #     "$lt": 130,
+                # },
             }
         },
         {
